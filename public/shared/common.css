@@ -234,3 +234,82 @@ input::placeholder { color: var(--color-silver); }
   letter-spacing: 2px;
   font-family: monospace;
 }
+
+/* 공동 성장 캠페인 */
+.growth-widget {
+  overflow: hidden;
+  border: 2px solid #bde882;
+  border-radius: 20px;
+  background: #fbfff5;
+  color: var(--color-charcoal);
+}
+.growth-scene {
+  min-height: 230px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: url('../images/growth-garden.jpg') center/cover no-repeat;
+  overflow: hidden;
+}
+.growth-character {
+  position: relative;
+  z-index: 2;
+  font-size: clamp(82px, 14vw, 150px);
+  filter: drop-shadow(0 10px 8px rgba(52, 104, 26, 0.2));
+  transform-origin: bottom center;
+}
+.growth-stage-label {
+  position: absolute;
+  z-index: 3;
+  bottom: 12px;
+  background: rgba(255,255,255,0.9);
+  border: 2px solid rgba(88,204,2,0.35);
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 13px;
+  font-weight: 800;
+}
+.growth-sparkle {
+  position: absolute;
+  z-index: 1;
+  left: var(--x);
+  top: var(--y);
+  font-size: 18px;
+  opacity: 0.78;
+}
+.growth-info { padding: 14px 16px 16px; }
+.growth-title-row { display: flex; justify-content: space-between; gap: 12px; font-size: 18px; }
+.growth-title-row span { color: var(--color-duo-green-dark); }
+.growth-progress-wrap { position:relative; margin:9px 0 7px; padding-top:18px; }
+.growth-progress { height: 18px; border-radius: 10px; overflow: hidden; background: var(--color-cloud-gray); }
+.growth-progress > div { height: 100%; border-radius: inherit; background: linear-gradient(90deg, #58cc02, #b4e630, #ffc700); transition: width .7s ease; }
+.growth-score, .growth-next { font-size: 13px; color: var(--color-graphite); }
+.growth-reward { margin-top: 8px; padding: 8px 10px; border-radius: 10px; background: #fff8d5; font-weight: 700; }
+.growth-complete { color: #a45a00; font-weight: 800; margin-top: 5px; }
+.growth-milestone-marker { position:absolute; top:0; transform:translateX(-50%); font-size:16px; filter:grayscale(1); opacity:.55; }
+.growth-milestone-marker.unlocked { filter:none; opacity:1; animation:growthMilestonePop .65s ease both; }
+.growth-milestone-marker.rewarded { color:#357b00; }
+.growth-milestone-unlocked { margin-top:6px; padding:7px 9px; border-radius:10px; background:#fff0a8; color:#8b5b00; font-size:13px; font-weight:800; }
+.growth-milestone-list { display:flex; flex-wrap:wrap; gap:6px; margin-top:9px; }
+.growth-milestone-chip { padding:5px 8px; border-radius:999px; background:#eee; color:#777; font-size:12px; }
+.growth-milestone-chip.unlocked { background:#fff4b8; color:#8b5b00; }
+.growth-milestone-chip.rewarded { background:#dff7c7; color:#357b00; }
+.growth-empty { padding: 22px; text-align: center; color: var(--color-graphite); border: 2px dashed var(--color-cloud-gray); border-radius: 16px; }
+.growth-animate .growth-character { animation: growthPop .85s cubic-bezier(.2,.9,.3,1.25); }
+.growth-animate .growth-sparkle { animation: growthFloat 1.4s ease both; animation-delay: calc(var(--i) * 70ms); }
+@keyframes growthPop { 0% { transform: scale(.45) rotate(-8deg); opacity: .4; } 65% { transform: scale(1.14) rotate(4deg); } 100% { transform: scale(1); opacity: 1; } }
+@keyframes growthFloat { 0% { transform: translateY(22px) scale(.4); opacity: 0; } 55% { opacity: 1; } 100% { transform: translateY(-8px) scale(1); opacity: .85; } }
+@keyframes growthMilestonePop { 0% { transform:translateX(-50%) scale(.4); } 70% { transform:translateX(-50%) scale(1.25); } 100% { transform:translateX(-50%) scale(1); } }
+
+/* 개인 별 게이지와 상점 */
+.star-gauge-card { background: #fffdf2; border-color: #ffe078; }
+.star-gauge-track { height: 18px; border-radius: 10px; overflow: hidden; background: #eee8cf; }
+.star-gauge-fill { height: 100%; background: linear-gradient(90deg, #ffb800, #ffe55b); transition: width .5s ease; }
+.star-balance { color: #a45a00; font-weight: 800; }
+.shop-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 10px; }
+.shop-item { border: 2px solid #ffe078; border-radius: 14px; padding: 14px; background: #fffdf2; text-align: center; }
+.shop-item .price { color: #a45a00; font-weight: 800; margin: 6px 0; }
+.status-pill { display: inline-block; border-radius: 999px; padding: 4px 10px; font-size: 12px; font-weight: 800; }
+.status-pill.open { background: #d7ffb8; color: #357b00; }
+.status-pill.closed { background: #eee; color: #777; }

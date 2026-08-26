@@ -1,9 +1,20 @@
 [build]
   publish = "public"
   functions = "netlify/functions"
+  # 스키마 마이그레이션은 배포 시 한 번만. 실패하면 빌드가 멈춰 이전 버전이 유지된다.
+  command = "node scripts/migrate.js"
+
+[build.environment]
+  # 함수 런타임에서는 마이그레이션을 반복하지 않는다(콜드스타트 지연/크레딧 절감).
+  SKIP_MIGRATIONS = "1"
 
 [functions]
   included_files = ["server/migrations/**"]
+
+[functions."auto-finalize"]
+  # UTC 05:00~11:45 = 한국시간(KST) 14:00~20:45. 학생 하교(14:30) 이후 마감 시각을 모두 덮는다.
+  # 하루 2,880회 → 28회로 줄여 크레딧을 아끼면서도 마감 지연은 생기지 않는다.
+  schedule = "*/15 5-11 * * *"
 
 [[redirects]]
   from = "/api/*"

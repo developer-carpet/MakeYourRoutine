@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>보상 관리</title>
+<link rel="stylesheet" href="../shared/common.css" />
+<style>
+  .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
+  .field label { display:block; color:var(--color-graphite); font-size:13px; font-weight:700; margin-bottom:4px; }
+  .field input,.field select { width:100%; }
+  .weekday-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .weekday-row label { display:flex; align-items:center; gap:4px; background:#f5f5f5; border-radius:10px; padding:7px 10px; }
+  .preview-box { background:#f4fbff; border-radius:12px; padding:12px; margin:12px 0; color:var(--color-graphite); }
+  .actions { display:flex; flex-wrap:wrap; gap:8px; }
+  .actions button { width:auto; }
+  .teacher-table { width:100%; border-collapse:collapse; min-width:720px; }
+  .teacher-table th,.teacher-table td { padding:9px; border-bottom:1px solid var(--color-cloud-gray); text-align:center; }
+  .mini-gauge { width:130px; height:12px; background:#eee8cf; border-radius:8px; overflow:hidden; display:inline-block; }
+  .mini-gauge div { height:100%; background:#ffc700; }
+  .test-panel { border:2px dashed var(--color-grape-soda); background:#faf7ff; }
+  .reward-modal { position:fixed; inset:0; z-index:200; background:rgba(55,60,78,.6); display:none; align-items:center; justify-content:center; padding:16px; }
+  .reward-modal.show { display:flex; }
+  .reward-modal-card { width:min(440px,100%); background:white; border-radius:20px; padding:22px; }
+  .milestone-row { display:grid; grid-template-columns:110px minmax(220px,1fr) auto; gap:8px; align-items:end; margin-top:8px; }
+  .milestone-row button { min-width:72px; }
+  @media(max-width:640px){ .milestone-row { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="topbar">
+    <h1>보상 관리</h1>
+    <div class="links"><a href="index.html">대시보드</a><a href="board.html">전자칠판</a><a href="../student/kiosk.html">키오스크 열기</a></div>
+  </div>
+
+  <div class="card">
+    <h2>우리 반 공동 성장</h2>
+    <div id="currentGrowth" style="margin:12px 0;"></div>
+    <div id="campaignForm">
+      <div class="form-grid">
+        <div class="field"><label>캠페인 이름</label><input id="campaignName" value="우리 반 행복 나무" /></div>
+        <div class="field"><label>성장 테마</label><select id="campaignTheme"><option value="tree">행복 나무</option><option value="butterfly">애벌레와 나비</option></select></div>
+        <div class="field"><label>시작일</label><input id="campaignStart" type="date" /></div>
+        <div class="field"><label>몇 주 동안</label><input id="campaignWeeks" type="number" min="1" max="12" value="2" /></div>
+        <div class="field"><label>종료일</label><input id="campaignEnd" type="date" /></div>
+        <div class="field"><label>난이도</label><select id="campaignDifficulty"><option value="easy">여유롭게</option><option value="normal" selected>보통</option><option value="challenge">도전</option></select></div>
+        <div class="field"><label>최종 학급 보상</label><input id="campaignReward" placeholder="예: 금요일 놀이 시간 20분" /></div>
+        <div class="field"><label>제외 날짜(쉼표 구분)</label><input id="campaignExcluded" placeholder="2026-09-01,2026-09-02" /></div>
+        <div class="field" style="grid-column:1/-1;">
+          <label>중간 보상</label>
+          <div id="milestoneRows"></div>
+          <button class="secondary" type="button" style="margin-top:9px;" onclick="addMilestone()">+ 중간 보상 추가</button>
+          <div style="font-size:12px;color:var(--color-silver);margin-top:5px;">1~99% 사이에서 최대 8개까지 만들 수 있어요.</div>
+        </div>
+      </div>
+      <div style="margin:12px 0 5px; font-size:13px; color:var(--color-graphite); font-weight:700;">진행 요일</div>
+      <div class="weekday-row" id="weekdayRow">
+        <label><input type="checkbox" value="1" checked />월</label><label><input type="checkbox" value="2" checked />화</label>
+        <label><input type="checkbox" value="3" checked />수</label><label><input type="checkbox" value="4" checked />목</label>
+        <label><input type="checkbox" value="5" checked />금</label><label><input type="checkbox" value="6" />토</label><label><input type="checkbox" value="0" />일</label>
+      </div>
+      <label style="display:flex;align-items:center;gap:8px;margin-top:12px;"><input id="autoTarget" type="checkbox" checked /> 기간과 뽑기 설정에 맞춰 목표 점수 자동 계산</label>
+      <div class="field" id="manualTargetWrap" style="max-width:220px;display:none;margin-top:8px;"><label>직접 정한 목표 점수</label><input id="manualTarget" type="number" min="1" value="20" /></div>
+      <div id="campaignPreview" class="preview-box">기간을 입력하면 추천 목표를 계산해요.</div>
+      <div class="actions"><button onclick="saveCampaign()" id="saveCampaignBtn">캠페인 시작</button><button class="secondary" onclick="previewCampaign()">목표 다시 계산</button></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>개인 성장과 자동 마감</h2>
+    <p style="color:var(--color-graphite);font-size:14px;">루틴 하나를 완료할 때마다 별이 경험치로 바뀝니다. 학생에게는 숫자 목표 대신 노란색 퍼센트 바만 보입니다.</p>
+    <div class="form-grid" style="align-items:end;">
+      <div class="field"><label>자동 마감 시간(오후 2시~8시 45분, 15분 단위)</label><input id="autoCloseTime" type="time" step="900" min="14:00" max="20:45" value="16:30" /></div>
+      <div class="field"><label>공통 레벨 목표</label><input id="xpTarget" type="number" min="5" max="200" value="25" /></div>
+      <label style="display:flex;align-items:center;gap:8px;padding-bottom:10px;"><input id="xpDecayEnabled" type="checkbox" checked /> 반복 미완료 시 경험치 차감</label>
+      <div class="field"><label>연속 미완료 기준</label><input id="xpDecayMisses" type="number" min="2" max="20" value="3" /></div>
+      <div class="field"><label>차감 경험치</label><input id="xpDecayAmount" type="number" min="1" max="10" value="1" /></div>
+      <button onclick="saveGrowthSettings()">성장 설정 저장</button>
+    </div>
+    <div id="closeStatus" class="preview-box">마감 상태를 확인하고 있어요.</div>
+    <div class="table-scroll"><table class="teacher-table" id="starStudentTable"></table></div>
+  </div>
+
+  <div class="card">
+    <h2>보상권 상점</h2>
+    <div id="shopStatus" style="margin-bottom:10px;"></div>
+    <div class="actions" style="margin-bottom:14px;">
+      <select id="shopDuration"><option value="10">10분</option><option value="20" selected>20분</option><option value="30">30분</option><option value="60">60분</option></select>
+      <button onclick="openShop()">보상 상점 열기</button><button class="secondary" onclick="closeShop()">상점 닫기</button>
+      <a href="../student/kiosk.html"><button class="secondary" type="button">키오스크 화면</button></a>
+    </div>
+    <div class="form-grid" style="align-items:end;">
+      <div class="field"><label>새 상품</label><input id="itemName" placeholder="예: 오늘의 음악 선택" /></div>
+      <div class="field"><label>필요한 보상권</label><input id="itemCost" type="number" min="1" value="1" /></div>
+      <div class="field"><label>재고(비우면 무제한)</label><input id="itemStock" type="number" min="0" /></div>
+      <button onclick="addItem()">상품 추가</button>
+    </div>
+    <div id="shopItems" class="shop-grid" style="margin-top:12px;"></div>
+    <h3 style="margin-top:18px;">교환 승인 대기</h3>
+    <div id="redemptions"></div>
+  </div>
+
+  <div class="card test-panel">
+    <h2>🧪 보상 테스트 모드</h2>
+    <p style="color:var(--color-graphite);font-size:14px;">실제 점수와 경험치는 바꾸지 않고 화면만 미리 봅니다.</p>
+    <label>공동 성장 진행률 <input id="testGrowth" type="range" min="0" max="100" value="45" oninput="renderTest()" /> <span id="testGrowthLabel">45%</span></label>
+    <label style="display:block;margin-top:10px;">개인 성장 게이지 <input id="testStar" type="range" min="0" max="100" value="60" oninput="renderTest()" /> <span id="testStarLabel">60%</span></label>
+    <div id="testGrowthScene" style="margin-top:12px;"></div>
+    <div id="testStarScene" class="card star-gauge-card" style="margin-top:12px;margin-bottom:0;"></div>
+  </div>
+</div>
+
+<div class="reward-modal" id="grantModal">
+  <div class="reward-modal-card">
+    <h2 id="grantTitle">별 지급</h2>
+    <div class="field"><label>지급할 별</label><select id="grantAmount"><option value="1">⭐ 1개</option><option value="2">⭐⭐ 2개</option><option value="3">⭐⭐⭐ 3개</option></select></div>
+    <div class="field" style="margin-top:10px;"><label>지급 이유</label><select id="grantReasonPreset"><option>꾸준히 노력했어요</option><option>친구를 도와주었어요</option><option>어려운 일에 도전했어요</option><option>수업에 집중했어요</option><option value="custom">직접 입력</option></select></div>
+    <div class="field" id="customReasonWrap" style="display:none;margin-top:10px;"><label>직접 입력</label><input id="grantReasonCustom" placeholder="별을 주는 이유" /></div>
+    <div class="actions" style="margin-top:14px;"><button class="secondary" onclick="closeGrantModal()">취소</button><button onclick="submitGrantStar()">별 보내기</button></div>
+  </div>
+</div>
+
+<script src="../shared/api.js"></script>
+<script src="../shared/growth.js"></script>
+<script>
+const classId = sessionStorage.getItem('teacherClassId');
+if (!classId) location.href = 'index.html';
+let activeCampaign = null;
+let students = [];
+let milestoneDrafts = [];
+
+function milestoneId(){return crypto.randomUUID?crypto.randomUUID():`milestone-${Date.now()}-${Math.random().toString(16).slice(2)}`;}
+function addMilestone(percent='',rewardText=''){ if(milestoneDrafts.length>=8)return alert('중간 보상은 최대 8개까지 만들 수 있어요');milestoneDrafts.push({id:milestoneId(),percent,reward_text:rewardText,rewarded_at:null});renderMilestoneEditor();renderTest(); }
+function removeMilestone(id){const item=milestoneDrafts.find(row=>row.id===id);if(item?.rewarded_at)return alert('이미 지급한 중간 보상은 삭제할 수 없어요');milestoneDrafts=milestoneDrafts.filter(row=>row.id!==id);renderMilestoneEditor();renderTest();}
+function renderMilestoneEditor(){document.getElementById('milestoneRows').innerHTML=milestoneDrafts.map((item,index)=>`<div class="milestone-row"><div class="field"><label>${index+1}번째 달성률</label><input class="milestone-percent" data-id="${item.id}" type="number" min="1" max="99" value="${item.percent||''}" ${item.rewarded_at?'disabled':''} placeholder="예: 30" /></div><div class="field"><label>중간 보상 내용 ${item.rewarded_at?'· 지급 완료':''}</label><input class="milestone-reward" data-id="${item.id}" value="${escapeHtml(item.reward_text||'')}" ${item.rewarded_at?'disabled':''} placeholder="예: 음악 감상 10분" /></div><button class="secondary" type="button" onclick="removeMilestone('${item.id}')" ${item.rewarded_at?'disabled':''}>삭제</button></div>`).join('')||'<div style="font-size:13px;color:var(--color-silver);padding:7px 0;">아직 중간 보상이 없어요.</div>';}
+function readMilestones(){return milestoneDrafts.map(item=>{const percent=document.querySelector(`.milestone-percent[data-id="${item.id}"]`);const reward=document.querySelector(`.milestone-reward[data-id="${item.id}"]`);return{id:item.id,percent:Number(percent?.value||item.percent),reward_text:(reward?.value||item.reward_text||'').trim()};});}
+
+function kstDate() { return new Date(Date.now() + 9*60*60*1000).toISOString().slice(0,10); }
+function escapeHtml(value){return String(value??'').replace(/[&<>"']/g,char=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));}
+function addDays(date, days) { const d=new Date(date+'T00:00:00Z'); d.setUTCDate(d.getUTCDate()+days); return d.toISOString().slice(0,10); }
+function selectedWeekdays() { return Array.from(document.querySelectorAll('#weekdayRow input:checked')).map(input=>Number(input.value)); }
+function exclusions() { return document.getElementById('campaignExcluded').value.split(',').map(v=>v.trim()).filter(Boolean); }
+function syncEndDate() { document.getElementById('campaignEnd').value=addDays(document.getElementById('campaignStart').value, Number(document.getElementById('campaignWeeks').value||1)*7-1); previewCampaign(); }
+
+async function loadAll() {
+  const [cls, campaign, gauges] = await Promise.all([
+    API.get(`/api/classes/${classId}`), API.get(`/api/rewards/growth/current?class_id=${classId}`), API.get(`/api/rewards/progress/students?class_id=${classId}`)
+  ]);
+  activeCampaign=campaign;
+  document.getElementById('autoCloseTime').value=cls.auto_close_time||'16:30';
+  document.getElementById('xpTarget').value=cls.xp_target||25;
+  document.getElementById('xpDecayEnabled').checked=cls.xp_decay_enabled!==0;
+  document.getElementById('xpDecayMisses').value=cls.xp_decay_misses||3;
+  document.getElementById('xpDecayAmount').value=cls.xp_decay_amount||1;
+  const finalized=gauges[0]?.finalized;
+  document.getElementById('closeStatus').innerHTML=finalized
+    ? '<strong>오늘 성장 마감 완료</strong> · 학생 화면에는 확정된 레벨과 보상권이 표시됩니다.'
+    : `<strong>오늘 ${cls.auto_close_time||'16:30'} 자동 마감 예정</strong> · 학생 완료 기록은 먼저 안전하게 저장되고 경험치는 이 시간에 확정됩니다.`;
+  renderCampaign();
+  renderStudents(gauges);
+  loadShop();
+}
+
+function renderCampaign() {
+  GrowthUI.render(document.getElementById('currentGrowth'), activeCampaign);
+  const btn=document.getElementById('saveCampaignBtn');
+  if (!activeCampaign) { btn.textContent='캠페인 시작'; document.getElementById('campaignStateActions')?.remove(); renderMilestoneEditor(); return; }
+  document.getElementById('campaignName').value=activeCampaign.name;
+  document.getElementById('campaignTheme').value=activeCampaign.theme;
+  document.getElementById('campaignStart').value=activeCampaign.start_date;
+  document.getElementById('campaignEnd').value=activeCampaign.end_date;
+  document.getElementById('campaignWeeks').value=Math.max(1,Math.ceil((new Date(activeCampaign.end_date+'T00:00:00Z')-new Date(activeCampaign.start_date+'T00:00:00Z')+86400000)/(7*86400000)));
+  document.getElementById('campaignDifficulty').value=activeCampaign.difficulty;
+  document.getElementById('campaignReward').value=activeCampaign.reward_text||'';
+  document.getElementById('campaignExcluded').value=(activeCampaign.excluded_dates||[]).join(',');
+  milestoneDrafts=(activeCampaign.milestones||[]).map(item=>({...item}));renderMilestoneEditor();
+  document.querySelectorAll('#weekdayRow input').forEach(i=>i.checked=(activeCampaign.weekdays||[]).includes(Number(i.value)));
+  document.getElementById('autoTarget').checked=!!activeCampaign.auto_target;
+  document.getElementById('manualTarget').value=activeCampaign.target_points;
+  document.getElementById('manualTargetWrap').style.display=activeCampaign.auto_target?'none':'block';
+  btn.textContent='캠페인 설정 수정';
+  let actions=document.getElementById('campaignStateActions');
+  if (!actions) { actions=document.createElement('div'); actions.id='campaignStateActions'; actions.className='actions'; document.getElementById('currentGrowth').after(actions); }
+  const pct=activeCampaign.target_points?activeCampaign.current_points/activeCampaign.target_points*100:0;
+  const milestoneActions=(activeCampaign.milestones||[]).filter(item=>pct>=item.percent&&!item.rewarded_at).map(item=>`<button onclick="markMilestoneRewarded('${item.id}')">${item.percent}% 중간 보상 지급 완료</button>`).join('');
+  actions.innerHTML=milestoneActions+(activeCampaign.completed_at
+    ? `<button onclick="markRewarded()">최종 보상 지급 완료</button><button class="secondary" onclick="archiveCampaign()">완료 없이 보관</button>`
+    : `<button class="secondary" onclick="archiveCampaign()">캠페인 종료</button>`);
+}
+
+async function previewCampaign() {
+  const start=document.getElementById('campaignStart').value, end=document.getElementById('campaignEnd').value;
+  if (!start||!end) return;
+  try {
+    const p=await API.post('/api/rewards/growth/preview',{class_id:classId,start_date:start,end_date:end,weekdays:selectedWeekdays(),excluded_dates:exclusions(),difficulty:document.getElementById('campaignDifficulty').value});
+    document.getElementById('campaignPreview').innerHTML=`예상 뽑기 <strong>${p.eligible_days}일</strong> · 하루 예상 <strong>${p.expected_daily}점</strong> · 추천 목표 <strong>${p.recommended_target}점</strong>`;
+    if(document.getElementById('autoTarget').checked) document.getElementById('manualTarget').value=p.recommended_target;
+  } catch(e) { document.getElementById('campaignPreview').textContent=e.message; }
+}
+
+async function saveCampaign() {
+  const milestones=readMilestones();if(milestones.some(item=>!item.percent||item.percent<1||item.percent>99||!item.reward_text))return alert('각 중간 보상의 달성률과 내용을 확인해주세요');if(new Set(milestones.map(item=>item.percent)).size!==milestones.length)return alert('같은 달성률의 중간 보상을 두 번 만들 수 없어요');
+  const body={class_id:classId,name:document.getElementById('campaignName').value.trim(),theme:document.getElementById('campaignTheme').value,start_date:document.getElementById('campaignStart').value,end_date:document.getElementById('campaignEnd').value,weekdays:selectedWeekdays(),excluded_dates:exclusions(),difficulty:document.getElementById('campaignDifficulty').value,reward_text:document.getElementById('campaignReward').value.trim(),auto_target:document.getElementById('autoTarget').checked,target_points:Number(document.getElementById('manualTarget').value),milestones};
+  try { activeCampaign=activeCampaign ? await API.put(`/api/rewards/growth/campaigns/${activeCampaign.id}`,body) : await API.post('/api/rewards/growth/campaigns',body); renderCampaign(); await previewCampaign(); alert('공동 성장 캠페인을 저장했어요'); } catch(e){ alert(e.message); }
+}
+async function markRewarded(){ if(!confirm('학급 보상을 지급 완료로 표시할까요?'))return; await API.post(`/api/rewards/growth/campaigns/${activeCampaign.id}/rewarded`,{}); activeCampaign=null; loadAll(); }
+async function markMilestoneRewarded(id){const item=(activeCampaign.milestones||[]).find(row=>row.id===id);if(!item||!confirm(`${item.percent}% 중간 보상 "${item.reward_text}"을 지급 완료로 표시할까요?`))return;activeCampaign=await API.post(`/api/rewards/growth/campaigns/${activeCampaign.id}/milestones/${encodeURIComponent(id)}/rewarded`,{});renderCampaign();}
+async function archiveCampaign(){ if(!confirm('현재 캠페인을 종료하고 기록으로 보관할까요?'))return; await API.post(`/api/rewards/growth/campaigns/${activeCampaign.id}/archive`,{}); activeCampaign=null; loadAll(); }
+
+async function saveGrowthSettings(){
+  const time=document.getElementById('autoCloseTime').value;
+  if(!/^(?:[01]\d|2[0-3]):(?:00|15|30|45)$/.test(time))return alert('자동 마감 시간은 15분 단위로 선택해주세요.');
+  await API.put(`/api/classes/${classId}`,{auto_close_time:time,xp_target:Number(document.getElementById('xpTarget').value),xp_decay_enabled:document.getElementById('xpDecayEnabled').checked,xp_decay_misses:Number(document.getElementById('xpDecayMisses').value),xp_decay_amount:Number(document.getElementById('xpDecayAmount').value)});
+  alert('개인 성장과 자동 마감 설정을 저장했어요. 변경한 목표는 다음 레벨부터 적용됩니다.'); loadAll();
+}
+function renderStudents(gauges){ students=gauges; document.getElementById('starStudentTable').innerHTML='<tr><th>학생</th><th>오늘 루틴</th><th>성장 게이지</th><th>레벨·보상권</th><th>추가 지급</th></tr>'+gauges.map(g=>`<tr><td>${g.nickname}</td><td>${g.is_absent?'결석':`${g.completed_count}/${g.total_count}`}</td><td><div class="mini-gauge"><div style="width:${g.projected_percent}%"></div></div> ${g.projected_percent}% ${g.finalized?'(확정)':'(진행 중)'}</td><td>Lv. ${g.projected_level} · 🎟️ ${g.tickets}장</td><td><button class="secondary" onclick="openGrantModal(${g.student_id},'${g.nickname.replace(/'/g,"\\'")}')">보너스 별</button></td></tr>`).join(''); }
+let grantStudentId=null;
+function openGrantModal(id,name){ grantStudentId=id;document.getElementById('grantTitle').textContent=`${name}에게 별 지급`;document.getElementById('grantAmount').value='1';document.getElementById('grantReasonPreset').value='꾸준히 노력했어요';document.getElementById('grantReasonCustom').value='';document.getElementById('customReasonWrap').style.display='none';document.getElementById('grantModal').classList.add('show'); }
+function closeGrantModal(){grantStudentId=null;document.getElementById('grantModal').classList.remove('show');}
+async function submitGrantStar(){ const preset=document.getElementById('grantReasonPreset').value;const reason=preset==='custom'?document.getElementById('grantReasonCustom').value.trim():preset;if(!reason)return alert('별을 주는 이유를 입력해주세요');try{await API.post('/api/rewards/progress/grant',{class_id:classId,student_id:grantStudentId,amount:Number(document.getElementById('grantAmount').value),reason});closeGrantModal();alert('보너스 별을 보냈어요! 별은 즉시 경험치로 바뀌며 키오스크에서 알림을 확인할 수 있어요.');loadAll();}catch(e){alert(e.message);} }
+
+let shopTimer=null;
+async function loadShop(){ const [status,items,redemptions]=await Promise.all([API.get(`/api/rewards/shop/status?class_id=${classId}`),API.get(`/api/rewards/shop/items?class_id=${classId}`),API.get(`/api/rewards/shop/redemptions?class_id=${classId}&status=pending`)]); document.getElementById('shopStatus').innerHTML=status.open?'<span class="status-pill open">상점 열림</span> 학생들이 지금 교환을 요청할 수 있어요.':'<span class="status-pill closed">상점 닫힘</span> 보상권은 안전하게 보관되며 상점을 열 때만 사용할 수 있어요.'; document.getElementById('shopItems').innerHTML=items.filter(i=>i.active).map(i=>`<div class="shop-item"><strong>${i.name}</strong><div class="price">🎟️ ${i.cost}장</div><small>${i.stock==null?'재고 무제한':`남은 재고 ${i.stock}`}</small><div><button class="secondary" onclick="disableItem(${i.id})" style="margin-top:8px;">판매 중지</button></div></div>`).join('')||'<p>등록한 상품이 없어요.</p>'; document.getElementById('redemptions').innerHTML=redemptions.map(r=>`<div class="card" style="padding:10px;"><strong>${r.nickname}</strong> · ${r.item_name} (🎟️ ${r.cost}장) <button onclick="approve(${r.id})">승인</button> <button class="secondary" onclick="reject(${r.id})">반려</button></div>`).join('')||'<p style="color:var(--color-silver);">대기 중인 요청이 없어요.</p>'; clearTimeout(shopTimer);if(status.open)shopTimer=setTimeout(loadShop,60000); }
+async function addItem(){ try{await API.post('/api/rewards/shop/items',{class_id:classId,name:document.getElementById('itemName').value.trim(),cost:Number(document.getElementById('itemCost').value),stock:document.getElementById('itemStock').value}); document.getElementById('itemName').value=''; loadShop();}catch(e){alert(e.message);} }
+async function disableItem(id){if(!confirm('이 상품의 판매를 중지할까요?'))return;await API.del(`/api/rewards/shop/items/${id}`);loadShop();}
+async function openShop(){await API.post('/api/rewards/shop/open',{class_id:classId,duration_minutes:Number(document.getElementById('shopDuration').value)});loadShop();}
+async function closeShop(){await API.post('/api/rewards/shop/close',{class_id:classId});loadShop();}
+async function approve(id){try{await API.post(`/api/rewards/shop/redemptions/${id}/approve`,{});loadShop();loadAll();}catch(e){alert(e.message);}}
+async function reject(id){await API.post(`/api/rewards/shop/redemptions/${id}/reject`,{});loadShop();}
+
+function renderTest(){ const growth=Number(document.getElementById('testGrowth').value),star=Number(document.getElementById('testStar').value); document.getElementById('testGrowthLabel').textContent=growth+'%';document.getElementById('testStarLabel').textContent=star+'%'; GrowthUI.render(document.getElementById('testGrowthScene'),{name:'미리보기 캠페인',theme:document.getElementById('campaignTheme').value,current_points:growth,target_points:100,reward_text:document.getElementById('campaignReward').value||'우리 반 단체 보상',milestones:readMilestones()},{animate:true});document.getElementById('testStarScene').innerHTML=`<div style="display:flex;justify-content:space-between"><strong>Lv. 4 나의 성장</strong><strong>${star}%</strong></div><div class="star-gauge-track" style="margin:9px 0;"><div class="star-gauge-fill" style="width:${star}%"></div></div><div>${star>=100?'레벨업! 보상권이 발급돼요.':'별이 사라지며 노란색 바가 차올라요.'}</div>`; }
+
+document.getElementById('campaignStart').value=kstDate(); syncEndDate();
+document.getElementById('campaignWeeks').addEventListener('input',syncEndDate);
+['campaignStart','campaignDifficulty'].forEach(id=>document.getElementById(id).addEventListener('change',id==='campaignStart'?syncEndDate:previewCampaign));
+document.getElementById('autoTarget').addEventListener('change',e=>{document.getElementById('manualTargetWrap').style.display=e.target.checked?'none':'block';previewCampaign();});
+document.getElementById('campaignTheme').addEventListener('change',renderTest);
+document.getElementById('grantReasonPreset').addEventListener('change',e=>document.getElementById('customReasonWrap').style.display=e.target.value==='custom'?'block':'none');
+document.getElementById('milestoneRows').addEventListener('input',renderTest);
+renderTest(); loadAll();
+</script>
+</body>
+</html>

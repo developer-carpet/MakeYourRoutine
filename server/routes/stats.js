@@ -1,7 +1,15 @@
 const express = require('express');
 const db = require('../db');
 const { todayStr, dowOf, rollDrawNumber } = require('../utils');
+const { applyDrawToGrowth, finalizeDailyGrowth, campaignToJson } = require('../reward-service');
 const router = express.Router();
+
+// 진행 중인 공동 성장 캠페인 1건. 보드/대시보드 응답에 함께 실어 프런트가 별도 요청을 안 하도록 한다.
+function activeCampaign(classId) {
+  return db.prepare(
+    `SELECT * FROM growth_campaigns WHERE class_id = ? AND status = 'active' ORDER BY id DESC LIMIT 1`
+  ).get(classId).then(campaignToJson);
+}
 
 function pickMessageFrom(tiers, classId, rate) {
   for (const t of tiers) {
@@ -91,14 +99,15 @@ router.get('/board', async (req, res) => {
   const date = req.query.date || todayStr();
   const dow = dowOf(date);
 
-  const [students, routines, checks, absences, notes, cls, exclusions] = await Promise.all([
+  const [students, routines, checks, absences, notes, cls, exclusions, campaign] = await Promise.all([
     db.prepare(`SELECT id, nickname, avatar_json FROM students WHERE class_id = ? AND routine_exempt = 0 ORDER BY number ASC`).all(classId),
     db.prepare(`SELECT id, student_id, days_of_week, task_date FROM routines WHERE class_id = ? AND active = 1`).all(classId),
     db.prepare(`SELECT rc.routine_id, rc.student_id, rc.completed FROM routine_checks rc JOIN students s ON s.id = rc.student_id WHERE s.class_id = ? AND rc.date = ?`).all(classId, date),
     db.prepare(`SELECT sa.student_id FROM student_absences sa JOIN students s ON s.id = sa.student_id WHERE s.class_id = ? AND sa.date = ?`).all(classId, date),
     db.prepare(`SELECT type FROM class_notes WHERE class_id = ? AND date = ?`).all(classId, date),
     db.prepare(`SELECT praise_weight, concern_weight, reward_text FROM classes WHERE id = ?`).get(classId),
-    db.prepare(`SELECT re.routine_id, re.student_id FROM routine_exclusions re JOIN routines r ON r.id = re.routine_id WHERE r.class_id = ?`).all(classId)
+    db.prepare(`SELECT re.routine_id, re.student_id FROM routine_exclusions re JOIN routines r ON r.id = re.routine_id WHERE r.class_id = ?`).all(classId),
+    activeCampaign(classId)
   ]);
 
   const exclusionMap = new Map();
@@ -138,7 +147,7 @@ router.get('/board', async (req, res) => {
   });
 
   const classRate = applyNoteAdjustment(totalRoutines ? totalCompleted / totalRoutines : 0, noteCounts, weights);
-  res.json({ class_rate: classRate, reward_text: cls ? cls.reward_text : null, students: studentStats });
+  res.json({ class_rate: classRate, reward_text: cls ? cls.reward_text : null, students: studentStats, growth_campaign: campaign });
 });
 
 router.get('/dashboard', async (req, res) => {
@@ -147,9 +156,10 @@ router.get('/dashboard', async (req, res) => {
   const date = req.query.date || todayStr();
   const dow = dowOf(date);
 
-  const [{ students, routinesByStudent, checksByStudent, tiers, absentSet, noteCounts, weights }, cls] = await Promise.all([
+  const [{ students, routinesByStudent, checksByStudent, tiers, absentSet, noteCounts, weights }, cls, campaign] = await Promise.all([
     loadClassContext(classId, date, dow),
-    db.prepare(`SELECT goal_gauge_target, reward_text FROM classes WHERE id = ?`).get(classId)
+    db.prepare(`SELECT goal_gauge_target, reward_text FROM classes WHERE id = ?`).get(classId),
+    activeCampaign(classId)
   ]);
 
   let totalRoutines = 0;
@@ -205,8 +215,16 @@ router.get('/dashboard', async (req, res) => {
     date,
     class_rate: classRate,
     class_note_counts: noteCounts,
+    class_note_energy: {
+      praise: Math.floor(noteCounts.praise / 3),
+      concern: Math.floor(noteCounts.concern / 3),
+      net: Math.floor(noteCounts.praise / 3) - Math.floor(noteCounts.concern / 3),
+      praise_until_next: (3 - (noteCounts.praise % 3)) % 3 || 3,
+      concern_until_next: (3 - (noteCounts.concern % 3)) % 3 || 3
+    },
     goal_gauge_target: cls ? cls.goal_gauge_target : 80,
     reward_text: cls ? cls.reward_text : null,
+    growth_campaign: campaign,
     students: studentStats
   });
 });
@@ -246,7 +264,8 @@ router.post('/day-end', async (req, res) => {
        participants = excluded.participants`
   ).run(classId, date, totalRoutines, totalCompleted, completionRate, participants);
 
-  res.json({ date, total_routines: totalRoutines, completed_routines: totalCompleted, completion_rate: completionRate, participants });
+  const growth = await finalizeDailyGrowth(classId, date);
+  res.json({ date, total_routines: totalRoutines, completed_routines: totalCompleted, completion_rate: completionRate, participants, growth });
 });
 
 // 전자칠판에서 진행하는 학급 전체 뽑기: 그날 우리 반이 루틴을 한 만큼(완료율)에 비례해 숫자를 뽑음.
@@ -257,7 +276,10 @@ router.post('/class-draw', async (req, res) => {
   const dow = dowOf(date);
 
   const existing = await db.prepare(`SELECT date, rate, number, tier FROM class_draws WHERE class_id = ? AND date = ?`).get(classId, date);
-  if (existing) return res.json(existing);
+  if (existing) {
+    const growth = await applyDrawToGrowth(classId, date, existing.number);
+    return res.json({ ...existing, growth });
+  }
 
   const { students, routinesByStudent, checksByStudent, absentSet, noteCounts, weights } = await loadClassContext(classId, date, dow);
   const cls = await db.prepare(`SELECT draw_config_json FROM classes WHERE id = ?`).get(classId);
@@ -280,7 +302,8 @@ router.post('/class-draw', async (req, res) => {
      ON CONFLICT(class_id, date) DO UPDATE SET rate = excluded.rate, number = excluded.number, tier = excluded.tier`
   ).run(classId, date, rate, number, tier);
 
-  res.json({ date, rate, number, tier });
+  const growth = await applyDrawToGrowth(classId, date, number);
+  res.json({ date, rate, number, tier, growth });
 });
 
 // 오늘 학급 뽑기 결과 (아직 안 뽑았으면 null)
@@ -296,6 +319,10 @@ router.get('/class-draw', async (req, res) => {
 router.delete('/class-draw', async (req, res) => {
   const { class_id } = req.query;
   const date = req.query.date || todayStr();
+  const applied = await db.prepare(
+    `SELECT ge.id FROM growth_events ge JOIN class_draws cd ON cd.id=ge.class_draw_id WHERE cd.class_id=? AND cd.date=?`
+  ).get(class_id, date);
+  if (applied) return res.status(409).json({ error: '이미 공동 성장에 반영된 뽑기는 초기화할 수 없어요' });
   await db.prepare(`DELETE FROM class_draws WHERE class_id = ? AND date = ?`).run(class_id, date);
   res.json({ ok: true });
 });

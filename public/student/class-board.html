@@ -11,6 +11,8 @@
   <a href="index.html">&larr; 내 루틴으로</a>
   <h1>우리 반 보드</h1>
 
+  <div id="growthBoard" style="margin-bottom:16px;"></div>
+
   <div class="card">
     <h2>오늘 우리 반 달성률</h2>
     <div class="gauge-wrap">
@@ -28,12 +30,14 @@
 </div>
 
 <script src="../shared/api.js"></script>
+<script src="../shared/growth.js"></script>
 <script>
 const classId = sessionStorage.getItem('studentClassId');
 if (!classId) location.href = 'index.html';
 
 async function load() {
   const data = await API.get(`/api/stats/board?class_id=${classId}`);
+  GrowthUI.render(document.getElementById('growthBoard'), data.growth_campaign);
   const pct = Math.round(data.class_rate * 100);
   document.getElementById('classGaugeFill').style.width = pct + '%';
   document.getElementById('classGaugeLabel').textContent = pct + '%';

@@ -15,5 +15,6 @@ app.use('/api/checks', require('./routes/checks'));
 app.use('/api/stats', require('./routes/stats'));
 app.use('/api/encouragements', require('./routes/encouragements'));
 app.use('/api/notes', require('./routes/notes'));
+app.use('/api/rewards', require('./routes/rewards'));
 
 module.exports = app;

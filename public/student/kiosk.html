@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>보상권 키오스크</title>
+<link rel="stylesheet" href="../shared/common.css" />
+<style>
+  body { min-height:100vh; background:linear-gradient(160deg,#fff9d9,#eaf9ff); }
+  .kiosk { max-width:820px; margin:0 auto; padding:24px; text-align:center; }
+  .kiosk-title { font-size:clamp(2rem,6vw,3.6rem); color:#d59000; }
+  .code-input { width:240px; max-width:100%; text-align:center; font-size:34px; letter-spacing:12px; }
+  .notice { position:fixed; inset:0; z-index:100; background:rgba(40,42,52,.65); display:none; align-items:center; justify-content:center; padding:18px; }
+  .notice.show { display:flex; }
+  .notice-card { width:min(520px,100%); background:white; border:4px solid #ffc700; border-radius:26px; padding:28px; box-shadow:0 20px 60px rgba(0,0,0,.2); }
+  .big-stars { font-size:72px; animation:starBounce .8s ease; }
+  @keyframes starBounce { 0%{transform:scale(.2) rotate(-12deg);opacity:0} 70%{transform:scale(1.18) rotate(5deg)} 100%{transform:scale(1);opacity:1} }
+  .kiosk-balance { font-size:26px; color:#a45a00; font-weight:800; }
+  .logout-timer { color:var(--color-silver);font-size:12px;margin-top:10px; }
+</style>
+</head>
+<body>
+<div class="kiosk">
+  <h1 class="kiosk-title">🎟️ 우리 반 보상 키오스크</h1>
+  <div id="loginView" class="card" style="max-width:500px;margin:30px auto;">
+    <h2>내 코드를 입력하세요</h2>
+    <input id="loginCode" class="code-input" maxlength="4" inputmode="numeric" autocomplete="off" onkeydown="if(event.key==='Enter') kioskLogin()" />
+    <button onclick="kioskLogin()" style="display:block;margin:14px auto 0;">성장과 보상권 확인하기</button>
+    <p style="color:var(--color-silver);font-size:13px;">확인이 끝나면 자동으로 로그아웃됩니다.</p>
+  </div>
+
+  <div id="studentView" style="display:none;">
+    <div class="card">
+      <h2 id="hello"></h2>
+      <div id="balance" class="kiosk-balance"></div>
+      <div id="todayGauge" class="star-gauge-card" style="margin-top:12px;padding:12px;border-radius:14px;"></div>
+    </div>
+    <div class="card">
+      <div id="shopHeading"></div>
+      <div id="shopItems" class="shop-grid" style="margin-top:14px;"></div>
+    </div>
+    <button class="secondary" onclick="logoutKiosk()">사용 끝내기</button>
+    <div class="logout-timer" id="logoutTimer"></div>
+  </div>
+</div>
+
+<div class="notice" id="starNotice">
+  <div class="notice-card">
+    <h2 id="noticeTitle">새 성장 소식이 있어요!</h2>
+    <div class="big-stars" id="noticeStars">⭐</div>
+    <div id="noticeReasons"></div>
+    <button onclick="confirmStars()" style="margin-top:16px;">성장 소식 확인하기</button>
+  </div>
+</div>
+
+<script src="../shared/api.js"></script>
+<script>
+let student=null, starData=null, classId=null, logoutSeconds=0, logoutInterval=null;
+
+async function kioskLogin(){
+  const code=document.getElementById('loginCode').value.trim();
+  if(!/^\d{4}$/.test(code)) return alert('숫자 4자리 코드를 입력해주세요');
+  try{
+    student=await API.post('/api/students/login',{login_code:code});
+    classId=student.class_id;
+    document.getElementById('loginCode').value='';
+    document.getElementById('loginView').style.display='none';
+    document.getElementById('studentView').style.display='block';
+    document.getElementById('hello').textContent=`${student.nickname} 학생, 반가워요!`;
+    await refreshKiosk();
+    startLogoutTimer(90);
+    showUnseen();
+  }catch(e){alert('코드를 다시 확인해주세요');}
+}
+
+async function refreshKiosk(){
+  if(!student)return;
+  const [stars,shop]=await Promise.all([API.get(`/api/rewards/progress/student?student_id=${student.id}`),API.get(`/api/rewards/shop/status?class_id=${classId}`)]);
+  starData=stars;
+  document.getElementById('balance').textContent=`내 보상권 🎟️ ${stars.tickets}장`;
+  const g=stars.growth;
+  if(g){const pct=g.finalized?g.percent:g.projected_percent;const level=g.finalized?g.level:g.projected_level;document.getElementById('todayGauge').innerHTML=`<div style="display:flex;justify-content:space-between"><strong>Lv. ${level} 나의 성장</strong><strong>${pct}%</strong></div><div class="star-gauge-track" style="margin:8px 0;"><div class="star-gauge-fill" style="width:${pct}%"></div></div><small>${g.finalized?'오늘의 성장이 확정되었어요.':'완료한 별은 자동 마감 시간에 확정돼요.'}</small>`;}
+  renderShop(shop);
+}
+
+function showUnseen(){
+  if(!starData?.unseen?.length)return;
+  const total=starData.unseen.reduce((sum,event)=>sum+Number(event.amount),0);
+  document.getElementById('noticeTitle').textContent=total>=0?`보너스 별이 성장 경험치로 바뀌었어요!`:'꾸준함 게이지에 변화가 있어요';
+  document.getElementById('noticeStars').textContent=total>=0?'⭐':'🌱';
+  document.getElementById('noticeReasons').innerHTML=starData.unseen.map(event=>`<div class="card" style="padding:9px;margin:7px 0;text-align:left;"><strong>${Number(event.amount)>0?'+':''}${event.amount} 경험치</strong> · ${escapeHtml(event.reason||'성장 기록')}</div>`).join('');
+  document.getElementById('starNotice').classList.add('show');
+}
+
+async function confirmStars(){
+  const ids=(starData?.unseen||[]).map(event=>event.id);
+  if(ids.length) await API.post('/api/rewards/progress/seen',{student_id:student.id,event_ids:ids});
+  document.getElementById('starNotice').classList.remove('show');
+  starData.unseen=[];
+  startLogoutTimer(90);
+}
+
+function renderShop(shop){
+  const heading=document.getElementById('shopHeading'),items=document.getElementById('shopItems');
+  if(!shop.open){heading.innerHTML='<h2>보상 상점은 지금 닫혀 있어요</h2><p>보상권은 안전하게 보관돼요. 선생님이 상점을 열면 사용할 수 있어요.</p>';items.innerHTML='';return;}
+  heading.innerHTML='<h2>🎉 보상 상점이 열렸어요!</h2><p>원하는 보상을 고르면 선생님께 승인 요청이 갑니다.</p>';
+  items.innerHTML=shop.items.map(item=>`<div class="shop-item"><div style="font-size:34px;">🎁</div><strong>${escapeHtml(item.name)}</strong><div class="price">🎟️ ${item.cost}장</div><small>${item.stock==null?'':`남은 수량 ${item.stock}`}</small><button onclick="requestItem(${item.id},'${escapeAttr(item.name)}',${item.cost})" style="margin-top:9px;width:100%;">교환 요청</button></div>`).join('')||'<p>지금 교환할 수 있는 상품이 없어요.</p>';
+}
+
+async function requestItem(id,name,cost){
+  if(!confirm(`${name}을(를) 보상권 ${cost}장으로 신청할까요?`))return;
+  try{await API.post('/api/rewards/shop/redeem',{student_id:student.id,item_id:id});alert('선생님께 교환 요청을 보냈어요!');startLogoutTimer(15);}catch(e){alert(e.message);}
+}
+
+function startLogoutTimer(seconds){
+  logoutSeconds=seconds;clearInterval(logoutInterval);updateTimer();
+  logoutInterval=setInterval(()=>{logoutSeconds--;updateTimer();if(logoutSeconds<=0)logoutKiosk();},1000);
+}
+function updateTimer(){document.getElementById('logoutTimer').textContent=`개인정보 보호를 위해 ${logoutSeconds}초 후 자동으로 나갑니다.`;}
+function logoutKiosk(){clearInterval(logoutInterval);student=null;starData=null;classId=null;document.getElementById('starNotice').classList.remove('show');document.getElementById('studentView').style.display='none';document.getElementById('loginView').style.display='block';document.getElementById('loginCode').focus();}
+function escapeHtml(v){return String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function escapeAttr(v){return String(v??'').replace(/\\/g,'\\\\').replace(/'/g,"\\'");}
+document.getElementById('loginCode').focus();
+</script>
+</body>
+</html>

@@ -8,6 +8,10 @@
 <link rel="manifest" href="../manifest.json" />
 <style>
   .slot-title { margin: 18px 0 8px; color: var(--color-graphite); font-size: 15px; font-weight: 700; }
+  .sync-status { min-height:20px; text-align:right; font-size:12px; color:var(--color-silver); }
+  .flying-star { position:fixed; z-index:200; font-size:34px; pointer-events:none; transition:transform .48s cubic-bezier(.2,.8,.2,1),opacity .48s; }
+  .growth-level { display:flex; justify-content:space-between; align-items:center; gap:10px; }
+  .growth-percent { color:#a56700; font-size:22px; font-weight:900; }
 </style>
 </head>
 <body>
@@ -24,6 +28,7 @@
       <div class="links">
         <a href="index.html">나의 루틴</a>
         <a href="class-board.html">우리 반 보드</a>
+        <a href="kiosk.html">보상 키오스크</a>
         <a href="../teacher/board.html">전자칠판</a>
         <a href="me.html">나의 통계</a>
         <a href="#" onclick="logout(); location.href='../index.html';">처음으로</a>
@@ -31,6 +36,8 @@
       </div>
     </div>
     <div id="pointsBar" style="margin-bottom:10px; font-size:14px; color:var(--color-graphite); font-weight:700;"></div>
+    <div id="syncStatus" class="sync-status"></div>
+    <div id="starGaugeCard" class="card star-gauge-card"></div>
     <div id="encourageBanner"></div>
     <div id="routineList"></div>
   </div>
@@ -45,7 +52,15 @@
 <script>
 let studentId = sessionStorage.getItem('studentId');
 let classId = sessionStorage.getItem('studentClassId');
-let stopPolling;
+let state = null;
+let syncing = false;
+let syncTimer = null;
+let lastLoadedAt = 0;
+
+function queueKey() { return `routine-sync-${studentId}`; }
+function readQueue() { try { return JSON.parse(localStorage.getItem(queueKey()) || '{}'); } catch (_) { return {}; } }
+function writeQueue(queue) { localStorage.setItem(queueKey(), JSON.stringify(queue)); }
+function eventId() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
 
 function showLogin() {
   document.getElementById('loginView').style.display = 'block';
@@ -55,19 +70,28 @@ function showMain() {
   document.getElementById('loginView').style.display = 'none';
   document.getElementById('mainView').style.display = 'block';
   document.getElementById('greeting').textContent = `안녕, ${sessionStorage.getItem('studentNickname')}!`;
-  stopPolling = startPolling(loadToday, 30000);
-  startPolling(loadEncouragements, 30000);
-  loadPoints();
+  loadStudentState();
 }
 
-async function loadPoints() {
-  const s = await API.get(`/api/students/${studentId}`);
-  const stickers = '⭐'.repeat(Math.min(Math.floor((s.points || 0) / 5), 10));
-  document.getElementById('pointsBar').textContent = `${s.points || 0}점  ${stickers}`;
+async function loadStudentState() {
+  try {
+    state = await API.get(`/api/checks/student-state?student_id=${studentId}`);
+    lastLoadedAt = Date.now();
+    renderState();
+    flushQueue();
+  } catch (e) {
+    document.getElementById('syncStatus').textContent = '연결을 확인하고 다시 시도할게요';
+  }
 }
 
-async function loadEncouragements() {
-  const list = await API.get(`/api/encouragements?student_id=${studentId}&unread_only=1`);
+function renderState() {
+  document.getElementById('pointsBar').textContent = state.finalized ? '오늘 성장은 자동 마감되었어요' : '루틴을 누르면 별이 성장 바로 들어가요';
+  renderRoutines(state.routines);
+  renderGrowth();
+  renderEncouragements(state.encouragements || []);
+}
+
+function renderEncouragements(list) {
   const box = document.getElementById('encourageBanner');
   if (!list.length) { box.innerHTML = ''; return; }
   const m = list[0];
@@ -79,7 +103,8 @@ async function loadEncouragements() {
 
 async function readEncouragement(id) {
   await API.post(`/api/encouragements/${id}/read`);
-  loadEncouragements();
+  state.encouragements = state.encouragements.filter(message => Number(message.id) !== Number(id));
+  renderEncouragements(state.encouragements);
 }
 
 async function login() {
@@ -99,8 +124,8 @@ async function login() {
 }
 
 function logout() {
+  flushQueue(true);
   sessionStorage.clear();
-  if (stopPolling) stopPolling();
   showLogin();
 }
 
@@ -111,10 +136,9 @@ function showToast(msg) {
   setTimeout(() => t.classList.remove('show'), 1500);
 }
 
-async function loadToday() {
-  const data = await API.get(`/api/checks/today?class_id=${classId}&student_id=${studentId}`);
+function renderRoutines(routines) {
   const slots = {};
-  data.routines.forEach(r => {
+  routines.forEach(r => {
     slots[r.time_slot] = slots[r.time_slot] || [];
     slots[r.time_slot].push(r);
   });
@@ -135,41 +159,111 @@ async function loadToday() {
           ${r.not_started && !done ? `<div style="font-size:13px; color:#c0392b; margin-top:2px;">시작 시간(${r.start_time}) 전이에요</div>` : ''}
           ${r.locked && !r.not_started && !done ? `<div style="font-size:13px; color:#c0392b; margin-top:2px;">마감(${r.deadline_time}) 지났어요</div>` : ''}
         </div>
-        <div class="check-btn ${done ? 'done' : ''} ${r.locked ? 'locked' : ''}" data-target="${r.target_count}" onclick="${r.locked ? '' : `toggle(${r.id}, this)`}">${done ? '✓' : (r.locked ? '🔒' : '')}</div>
+        <div class="check-btn ${done ? 'done' : ''} ${r.locked ? 'locked' : ''}" data-target="${r.target_count}" data-count="${r.check.count || 0}" onclick="${r.locked ? '' : `toggle(${r.id}, this)`}">${done ? '✓' : (r.locked ? '🔒' : '')}</div>
       </div>`;
     }).join('')}
   `).join('');
 }
 
+function renderGrowth(animate = false) {
+  const growth = state?.growth;
+  const box = document.getElementById('starGaugeCard');
+  if (!growth) { box.innerHTML = '<strong>나의 성장</strong><p>성장 정보를 준비하고 있어요.</p>'; return; }
+  let level = Number(growth.level || 1);
+  let progress = Number(growth.progress_xp || 0);
+  const target = Math.max(1, Number(growth.target_xp || 25));
+  if (!state.finalized) {
+    const completed = state.routines.filter(routine => routine.check?.completed).length;
+    progress += completed;
+    while (progress >= target) { progress -= target; level += 1; }
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(progress / target * 100)));
+  const message = growth.is_absent ? '오늘은 성장 게이지가 쉬어가요.'
+    : growth.decay_warning ? '꾸준함 게이지가 잠들기 직전이에요. 오늘 루틴으로 깨워주세요!'
+    : state.finalized ? '오늘의 성장이 확정되었어요.'
+    : level > Number(growth.level) ? '자동 마감 후 레벨업과 보상권이 확정돼요!'
+    : '완료한 별은 자동 마감 시간에 확정돼요.';
+  box.innerHTML = `<div class="growth-level"><strong>Lv. ${level} 나의 성장</strong><span class="growth-percent">${pct}%</span></div>
+    <div class="star-gauge-track" style="margin:10px 0 5px;"><div class="star-gauge-fill" style="width:${pct}%;${animate?'transition:width .45s ease;':''}"></div></div>
+    <div style="font-size:13px;color:var(--color-graphite);">${message} · 보상권 🎟️ ${growth.tickets}장</div>`;
+}
+
+function flyStar(el) {
+  const target = document.getElementById('starGaugeCard');
+  const from = el.getBoundingClientRect();
+  const to = target.getBoundingClientRect();
+  const star = document.createElement('div');
+  star.className = 'flying-star'; star.textContent = '⭐';
+  star.style.left = `${from.left}px`; star.style.top = `${from.top}px`;
+  document.body.appendChild(star);
+  requestAnimationFrame(() => {
+    star.style.transform = `translate(${to.left + to.width/2 - from.left}px,${to.top + to.height/2 - from.top}px) scale(.25)`;
+    star.style.opacity = '0';
+  });
+  setTimeout(() => { star.remove(); renderGrowth(true); }, 480);
+}
+
 function toggle(routineId, el) {
-  // 서버 응답을 기다리지 않고 누르는 즉시 화면을 먼저 바꿔서(낙관적 업데이트) 반응이 느려 보이지 않게 함.
-  // 이전엔 toggle API 응답을 기다린 뒤 today 전체를 다시 불러와 화면을 다시 그렸는데,
-  // 원격 DB 왕복이 두 번(toggle + today) 걸려 체크표시가 뜨는 데 오래 걸렸음.
-  const wasDone = el.classList.contains('done');
-  el.classList.toggle('done', !wasDone);
-  el.textContent = !wasDone ? '✓' : '';
+  const routine = state.routines.find(item => Number(item.id) === Number(routineId));
+  if (!routine || routine.locked) return;
+  const wasDone = !!routine.check.completed;
+  const target = Math.max(1, Number(routine.target_count || 1));
+  const previousCount = Number(routine.check.count || 0);
+  const count = wasDone ? 0 : Math.min(target, previousCount + 1);
+  const completed = count >= target;
+  routine.check.count = count;
+  routine.check.completed = completed;
+  el.dataset.count = count;
+  el.classList.toggle('done', completed);
+  el.textContent = completed ? '✓' : '';
   el.classList.add('bump');
   setTimeout(() => el.classList.remove('bump'), 200);
-
-  API.post('/api/checks/toggle', { routine_id: routineId, student_id: studentId })
-    .then(res => {
-      el.classList.toggle('done', res.completed);
-      el.textContent = res.completed ? '✓' : '';
-      const target = Number(el.dataset.target || 1);
-      const countEl = document.getElementById(`count-${routineId}`);
-      if (countEl) countEl.textContent = target > 1 ? ` (${res.count}/${target})` : '';
-      if (res.completed) {
-        document.getElementById('doneSound').play().catch(() => {});
-        showToast('잘했어요! 완료했어요 🎉');
-      }
-      loadPoints();
-    })
-    .catch(e => {
-      el.classList.toggle('done', wasDone);
-      el.textContent = wasDone ? '✓' : '';
-      alert(e.message);
-    });
+  const countEl = document.getElementById(`count-${routineId}`);
+  if (countEl) countEl.textContent = target > 1 ? ` (${count}/${target})` : '';
+  if (completed && !wasDone) {
+    document.getElementById('doneSound').play().catch(() => {});
+    showToast('잘했어요! 별이 성장으로 바뀌어요 ⭐');
+    flyStar(el);
+  } else renderGrowth(true);
+  queueSync(routine);
 }
+
+function queueSync(routine) {
+  const queue = readQueue();
+  queue[routine.id] = { event_id:eventId(), routine_id:routine.id, student_id:Number(studentId), count:Number(routine.check.count || 0), completed:!!routine.check.completed };
+  writeQueue(queue);
+  document.getElementById('syncStatus').textContent = '저장 중…';
+  clearTimeout(syncTimer);
+  syncTimer = setTimeout(() => flushQueue(), Object.keys(queue).length >= 5 ? 50 : 900);
+}
+
+async function flushQueue(keepalive = false) {
+  if (syncing || !studentId) return;
+  const queue = readQueue();
+  const events = Object.values(queue);
+  if (!events.length) { document.getElementById('syncStatus').textContent = ''; return; }
+  syncing = true;
+  try {
+    const response = await fetch('/api/checks/sync', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({events}), credentials:'same-origin', keepalive });
+    if (!response.ok) { const error=await response.json().catch(()=>({})); throw Object.assign(new Error(error.error||'저장 실패'),{status:response.status}); }
+    const result = await response.json();
+    const latest = readQueue();
+    events.forEach(event => { if (latest[event.routine_id]?.event_id === event.event_id) delete latest[event.routine_id]; });
+    writeQueue(latest);
+    document.getElementById('syncStatus').textContent = '저장됨 ✓';
+    if (state?.student) state.student.points = result.points;
+  } catch (error) {
+    document.getElementById('syncStatus').textContent = error.status === 409 ? '자동 마감되어 최종 상태를 불러옵니다' : '연결되면 자동으로 저장할게요';
+    if (error.status === 409) { localStorage.removeItem(queueKey()); setTimeout(loadStudentState, 500); }
+    else setTimeout(() => flushQueue(), 10000);
+  } finally { syncing = false; }
+}
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'hidden') flushQueue(true);
+  else if (studentId && Date.now() - lastLoadedAt > 5*60*1000) loadStudentState();
+});
+window.addEventListener('pagehide', () => flushQueue(true));
 
 if (studentId) showMain(); else showLogin();
 </script>

@@ -112,6 +112,25 @@
   .gacha-rate { font-size: 15px; color: var(--color-graphite); margin-bottom: 14px; }
   .gacha-msg { font-size: 20px; min-height: 50px; margin-bottom: 20px; color: var(--color-charcoal); }
 
+  .reward-board-overlay {
+    position: fixed; inset: 0; z-index: 340; display: none; overflow-y: auto;
+    background: rgba(244,251,238,0.98); padding: 20px;
+  }
+  .reward-board-overlay.show { display: block; }
+  .reward-board-panel { max-width: 1200px; margin: 0 auto; }
+  .reward-board-top { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; }
+  .reward-board-top h2 { font-size: clamp(1.5rem, 4vw, 2.4rem); color: var(--color-duo-green-dark); margin: 0; }
+  .reward-board-top button { width: auto; }
+  #growthRewardScene .growth-scene { min-height: min(58vh, 540px); }
+  #growthRewardScene .growth-character { font-size: clamp(120px, 20vw, 230px); }
+  .growth-added-banner { text-align: center; font-size: clamp(1.15rem, 3vw, 1.8rem); font-weight: 800; color: #a45a00; margin: 12px 0; }
+  body.dark .reward-board-overlay { background: rgba(24,29,40,0.98); }
+  @media (max-width: 600px) {
+    .reward-board-overlay { padding: 12px; }
+    .reward-board-top { align-items: flex-start; flex-direction: column; }
+    .reward-board-top button { width: 100%; }
+  }
+
   #routineView { display: none; }
   #routineView .topbar h1 { font-size: 1.8rem; text-align: left; }
   #routineView .slot-title { color: var(--color-graphite); margin: 18px 0 8px; font-size: 15px; font-weight: 700; }
@@ -131,6 +150,7 @@
         <strong id="classGaugeLabel">0%</strong>
       </div>
       <p id="rewardText" style="color:var(--color-graphite);"></p>
+      <button id="growthBoardOpenBtn" class="secondary" onclick="openGrowthBoard()" style="display:none; font-size:14px; padding:9px 14px; margin-bottom:8px;">🌳 공동 보상판 보기</button>
       <div id="classDrawBox" style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <button id="classDrawBtn" onclick="startClassDraw()">오늘의 뽑기 뽑기! 🎁</button>
         <button id="classDrawResetBtn" onclick="resetClassDraw()" style="display:none;">초기화 🔄</button>
@@ -173,6 +193,7 @@
 <div class="overlay" id="noteOverlay">
   <div class="card">
     <h2 id="noteOverlayTitle">칭찬 한마디</h2>
+    <p style="font-size:13px;color:var(--color-graphite);">같은 날 칭찬 3회마다 공동 성장 에너지 +1, 아쉬움 3회마다 -1이 자동 반영됩니다.</p>
     <textarea id="noteText" placeholder="무엇이 좋았나요? (선택, 안 적어도 돼요)" style="width:100%; min-height:80px; font-family:inherit; font-size:14px; padding:10px; border:2px solid var(--color-cloud-gray); border-radius:12px;"></textarea>
     <div class="actions">
       <button class="secondary" onclick="closeNoteOverlay()">취소</button>
@@ -187,7 +208,18 @@
     <div class="gacha-number" id="gachaNumber">?</div>
     <div class="gacha-rate" id="gachaRate"></div>
     <div class="gacha-msg" id="gachaMsg"></div>
-    <button onclick="closeGacha()">확인</button>
+    <button id="gachaConfirmBtn" onclick="closeGacha(true)">확인</button>
+  </div>
+</div>
+
+<div class="reward-board-overlay" id="rewardBoardOverlay">
+  <div class="reward-board-panel">
+    <div class="reward-board-top">
+      <h2>우리 반 공동 보상판</h2>
+      <button onclick="closeGrowthBoard()">학생별 보드로 돌아가기</button>
+    </div>
+    <div id="growthAddedBanner" class="growth-added-banner"></div>
+    <div id="growthRewardScene"></div>
   </div>
 </div>
 
@@ -199,6 +231,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="../shared/api.js"></script>
+<script src="../shared/growth.js"></script>
 <script>
 function applyDarkMode(on) {
   document.body.classList.toggle('dark', on);
@@ -232,16 +265,27 @@ let stopRoutinePolling = null;
 let pendingStudent = null;
 let activeStudentId = null;
 let preloadedTodayPromise = null;
+let currentGrowthCampaign = null;
+let pendingGrowthCampaign = null;
+let pendingGrowthAdded = null;
+let growthAutoTimer = null;
 
 async function loadBoard() {
   const data = await API.get(`/api/stats/dashboard?class_id=${classId}`);
+  currentGrowthCampaign = data.growth_campaign;
+  const growthBtn = document.getElementById('growthBoardOpenBtn');
+  growthBtn.style.display = campaign ? 'inline-block' : 'none';
+  growthBtn.textContent = campaign
+    ? `${campaign.theme === 'butterfly' ? '🦋' : '🌳'} 공동 보상판 보기 · ${campaign.current_points}/${campaign.target_points}`
+    : '🌳 공동 보상판 보기';
   const pct = Math.round(data.class_rate * 100);
   document.getElementById('classGaugeFill').style.width = pct + '%';
   document.getElementById('classGaugeLabel').textContent = pct + '%';
   document.getElementById('rewardText').textContent = data.reward_text ? `🎁 목표 달성 시: ${data.reward_text}` : '';
   if (isTeacherMode) {
     const nc = data.class_note_counts || { praise: 0, concern: 0 };
-    document.getElementById('classNoteSummary').textContent = `오늘 칭찬 ${nc.praise}번 · 아쉬움 ${nc.concern}번`;
+    const ne = data.class_note_energy || { praise: 0, concern: 0, net: 0 };
+    document.getElementById('classNoteSummary').textContent = `오늘 칭찬 ${nc.praise}번(+${ne.praise}) · 아쉬움 ${nc.concern}번(-${ne.concern}) · 성장 에너지 ${ne.net>=0?'+':''}${ne.net}`;
   }
 
   const grid = document.getElementById('studentGrid');
@@ -266,7 +310,7 @@ async function loadBoard() {
 const GACHA_MESSAGES = {
   normal: '오늘도 우리 반이 루틴을 했어요! 내일은 더 멋진 숫자가 나올 수 있어요 🌱',
   special: '오늘 우리 반이 루틴을 정말 많이 했어요! 그래서 특별한 숫자가 나왔어요 🎉✨',
-  bad: '오늘 루틴을 많이 못 했네요 😢 내일은 더 열심히 해봐요!'
+  bad: '오늘은 성장이 잠시 쉬어가는 날이에요. 내일 다시 함께 시작해요 🌱'
 };
 
 async function loadClassDrawState() {
@@ -314,6 +358,12 @@ function playGacha(draw) {
   const numberEl = document.getElementById('gachaNumber');
   const rateEl = document.getElementById('gachaRate');
   const msgEl = document.getElementById('gachaMsg');
+  const confirmBtn = document.getElementById('gachaConfirmBtn');
+
+  clearTimeout(growthAutoTimer);
+  pendingGrowthCampaign = null;
+  pendingGrowthAdded = null;
+  confirmBtn.textContent = '확인';
 
   numberEl.classList.remove('land', 'tier-special', 'tier-bad');
   numberEl.classList.add('spin');
@@ -336,6 +386,16 @@ function playGacha(draw) {
       numberEl.classList.toggle('tier-special', draw.tier === 'special');
       numberEl.classList.toggle('tier-bad', draw.tier === 'bad');
       msgEl.textContent = GACHA_MESSAGES[draw.tier] || '';
+      if (draw.growth) {
+        msgEl.textContent += draw.growth.points_added > 0
+          ? ` 공동 성장 에너지 +${draw.growth.points_added}!`
+          : ' 이 뽑기는 이미 공동 성장에 반영되었어요.';
+        currentGrowthCampaign = draw.growth.campaign;
+        pendingGrowthCampaign = draw.growth.campaign;
+        pendingGrowthAdded = draw.growth.points_added;
+        confirmBtn.textContent = '보상판으로 이동 🌳';
+        growthAutoTimer = setTimeout(() => closeGacha(true), 2200);
+      }
       const soundId = draw.tier === 'special' ? 'drawSpecialSound' : 'drawNormalSound';
       const sound = document.getElementById(soundId);
       sound.currentTime = 0;
@@ -344,8 +404,34 @@ function playGacha(draw) {
   }, 70);
 }
 
-function closeGacha() {
+function closeGacha(showGrowth = false) {
+  clearTimeout(growthAutoTimer);
   document.getElementById('gachaOverlay').classList.remove('show');
+  if (showGrowth && pendingGrowthCampaign) {
+    const campaign = pendingGrowthCampaign;
+    const added = pendingGrowthAdded;
+    pendingGrowthCampaign = null;
+    pendingGrowthAdded = null;
+    openGrowthBoard(campaign, added);
+  }
+}
+
+function openGrowthBoard(campaign = currentGrowthCampaign, added = null) {
+  if (!campaign) return;
+  currentGrowthCampaign = campaign;
+  const banner = document.getElementById('growthAddedBanner');
+  banner.textContent = added > 0
+    ? `오늘의 뽑기로 성장 에너지 +${added}! ✨`
+    : added === 0 ? '오늘의 성장 에너지가 이미 반영되었어요.' : '';
+  GrowthUI.render(document.getElementById('growthRewardScene'), campaign, { animate: true });
+  document.getElementById('rewardBoardOverlay').classList.add('show');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeGrowthBoard() {
+  document.getElementById('rewardBoardOverlay').classList.remove('show');
+  document.body.style.overflow = '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 
 function computeRoutineStats(students) {
@@ -418,10 +504,17 @@ function closeNoteOverlay() {
 
 async function submitNote() {
   if (!pendingNoteType) return;
+  const noteType = pendingNoteType;
   const text = document.getElementById('noteText').value.trim();
   try {
-    await API.post('/api/notes', { class_id: classId, type: pendingNoteType, text: text || null });
+    const result = await API.post('/api/notes', { class_id: classId, type: noteType, text: text || null });
     closeNoteOverlay();
+    if (result.growth?.applied_delta > 0) showToast(`칭찬 3회 달성! 공동 성장 에너지 +${result.growth.applied_delta} 🌱`);
+    else if (result.growth?.applied_delta < 0) showToast(`아쉬움 3회 누적 · 공동 성장 에너지 ${result.growth.applied_delta}`);
+    else {
+      const count = noteType === 'praise' ? result.growth?.praise_count : result.growth?.concern_count;
+      showToast(`${noteType === 'praise' ? '칭찬' : '아쉬움'} ${Number(count || 0) % 3}/3 기록`);
+    }
     loadBoard();
   } catch (e) {
     alert(e.message);
