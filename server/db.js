@@ -96,7 +96,9 @@ async function migrate() {
       await ensureColumn('classes', 'xp_decay_amount', 'xp_decay_amount INTEGER DEFAULT 1');
       await ensureColumn('growth_events', 'event_date', 'event_date TEXT');
       await ensureColumn('growth_events', 'source_key', 'source_key TEXT');
+      await ensureColumn('student_xp_events', 'reversed_event_id', 'reversed_event_id INTEGER');
   await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_growth_event_source_unique ON growth_events(source_key) WHERE source_key IS NOT NULL`);
+  await client.execute(`CREATE UNIQUE INDEX IF NOT EXISTS idx_student_xp_reversal_unique ON student_xp_events(reversed_event_id) WHERE reversed_event_id IS NOT NULL`);
 }
 
 let ready;

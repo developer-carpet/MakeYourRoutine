@@ -6,6 +6,7 @@ const {
   normalizeMilestones,
   previewCampaign,
   loadStudentGrowthOverview,
+  loadUnseenGrowthAdjustments,
   applyGrowthDelta,
   finalizeDailyGrowth,
   finalizeDueClasses,
@@ -158,24 +159,90 @@ router.post('/progress/finalize', async (req, res) => {
 
 router.post('/progress/grant', async (req, res) => {
   const { class_id, student_id, amount, reason } = req.body;
-  const value = Math.max(1, Math.min(20, Math.floor(Number(amount) || 0)));
-  if (!class_id || !student_id || !reason) return res.status(400).json({ error: '학생, 보너스 별 개수, 지급 이유가 필요해요' });
-  res.json(await applyGrowthDelta({ classId: class_id, studentId: student_id, amount: value, date: todayStr(), type: 'teacher_bonus', reason }));
+  const requested = Number(amount);
+  const cleanReason = String(reason || '').trim().slice(0, 80);
+  if (!class_id || !student_id || !cleanReason) return res.status(400).json({ error: '학생, 조정할 별 개수, 이유가 필요해요' });
+  if (!Number.isInteger(requested) || requested === 0 || Math.abs(requested) > 3) {
+    return res.status(400).json({ error: '별은 한 번에 1~3개까지 추가하거나 차감할 수 있어요' });
+  }
+  const student = await db.prepare(`SELECT id FROM students WHERE id=? AND class_id=?`).get(student_id, class_id);
+  if (!student) return res.status(404).json({ error: '이 학급의 학생을 찾을 수 없어요' });
+
+  let value = requested;
+  if (requested < 0) {
+    const growth = await db.prepare(`SELECT progress_xp FROM student_growth WHERE student_id=? AND class_id=?`).get(student_id, class_id);
+    const available = Math.max(0, Number(growth?.progress_xp || 0));
+    value = -Math.min(Math.abs(requested), available);
+    if (!value) return res.status(400).json({ error: '현재 차감할 수 있는 확정 성장 게이지가 없어요' });
+  }
+
+  const result = await applyGrowthDelta({
+    classId: class_id,
+    studentId: student_id,
+    amount: value,
+    date: todayStr(),
+    type: value > 0 ? 'teacher_bonus' : 'teacher_deduction',
+    reason: cleanReason
+  });
+  res.json({ ...result, requested_amount: requested, applied_amount: value });
+});
+
+router.get('/progress/adjustments', async (req, res) => {
+  if (!req.query.class_id) return res.status(400).json({ error: '학급 정보가 필요해요' });
+  const rows = await db.prepare(
+    `SELECT e.id,e.student_id,e.amount,e.type,e.reason,e.created_at,s.nickname,
+       CASE WHEN EXISTS(SELECT 1 FROM student_xp_events u WHERE u.reversed_event_id=e.id) THEN 1 ELSE 0 END AS reversed
+     FROM student_xp_events e
+     JOIN students s ON s.id=e.student_id
+     WHERE e.class_id=? AND e.type IN ('teacher_bonus','teacher_deduction')
+     ORDER BY e.id DESC LIMIT 30`
+  ).all(req.query.class_id);
+  res.json(rows.map(row => ({ ...row, reversed: !!row.reversed })));
+});
+
+router.post('/progress/adjustments/:id/undo', async (req, res) => {
+  const classId = req.body.class_id;
+  const original = await db.prepare(
+    `SELECT e.*,s.nickname FROM student_xp_events e JOIN students s ON s.id=e.student_id
+     WHERE e.id=? AND e.class_id=? AND e.type IN ('teacher_bonus','teacher_deduction')`
+  ).get(req.params.id, classId);
+  if (!original) return res.status(404).json({ error: '되돌릴 별 조정 기록을 찾을 수 없어요' });
+  const alreadyUndone = await db.prepare(`SELECT id FROM student_xp_events WHERE reversed_event_id=?`).get(original.id);
+  if (alreadyUndone) return res.status(409).json({ error: '이미 되돌린 별 조정이에요' });
+
+  let value = -Number(original.amount);
+  if (value < 0) {
+    const growth = await db.prepare(`SELECT progress_xp FROM student_growth WHERE student_id=? AND class_id=?`).get(original.student_id, classId);
+    value = -Math.min(Math.abs(value), Math.max(0, Number(growth?.progress_xp || 0)));
+    if (!value) return res.status(409).json({ error: '획득한 휘장과 보상권을 보호하기 위해 현재 단계에서 더 되돌릴 수 없어요' });
+  }
+
+  const result = await applyGrowthDelta({
+    classId,
+    studentId: original.student_id,
+    amount: value,
+    date: todayStr(),
+    type: 'teacher_adjustment_undo',
+    reason: `교사 조정 되돌림 · ${original.reason || '사유 없음'}`,
+    reversedEventId: Number(original.id)
+  });
+  res.json({ ...result, applied_amount: value, original_event_id: Number(original.id) });
 });
 
 router.get('/progress/student', async (req, res) => {
   const student = await db.prepare(`SELECT id, class_id, nickname FROM students WHERE id = ?`).get(req.query.student_id);
   if (!student) return res.status(404).json({ error: '학생을 찾을 수 없어요' });
   await finalizeDueClasses(student.class_id);
-  const [events, overview] = await Promise.all([
+  const [events, overview, unseen] = await Promise.all([
     db.prepare(`SELECT * FROM student_xp_events WHERE student_id = ? ORDER BY id DESC LIMIT 50`).all(student.id),
-    loadStudentGrowthOverview(student.class_id, req.query.date || todayStr())
+    loadStudentGrowthOverview(student.class_id, req.query.date || todayStr()),
+    loadUnseenGrowthAdjustments(student.id)
   ]);
   const growth = overview.find(row => row.student_id === Number(student.id)) || null;
   res.json({
     student,
     tickets: growth?.tickets || 0,
-    unseen: events.filter(event => !event.seen_at),
+    unseen,
     events,
     growth
   });

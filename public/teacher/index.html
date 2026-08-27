@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>교사 대시보드 - 루틴 관리</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<script src="../shared/teacher-nav.js" defer></script>
 <style>
   .tabbar { display: flex; gap: 8px; margin: 10px 0 14px; }
   .tab-btn { background: var(--color-cloud-gray); color: var(--color-graphite); box-shadow: none; }
@@ -36,13 +37,7 @@
   <div id="mainView" style="display:none;">
     <div class="teacher-page-header">
       <h1 id="className">학급</h1>
-      <nav class="teacher-nav" aria-label="교사 화면 이동">
-        <a class="active" href="index.html" aria-current="page">대시보드</a>
-        <a href="board.html">전자칠판</a>
-        <a href="routines.html">루틴 관리</a>
-        <a href="rewards.html">보상 관리</a>
-        <a href="stats.html">통계</a>
-      </nav>
+      <div class="teacher-nav-slot" data-teacher-nav="dashboard"></div>
       <div class="teacher-utility-links">
         <a href="#" onclick="logout(); location.href='../index.html';">처음으로</a>
         <a href="#" onclick="logout()">로그아웃</a>

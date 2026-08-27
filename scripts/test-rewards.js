@@ -64,11 +64,38 @@ async function main() {
     assert.equal(progress.growth.level, 2);
     assert.equal(progress.tickets, 1);
 
-    await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: 5, reason: '친구를 도와주었어요' });
+    await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: 3, reason: '친구를 도와주었어요' });
+    await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: 2, reason: '어려운 일에 도전했어요' });
     progress = await request('GET', `/api/rewards/progress/student?student_id=${student.id}`);
     assert.equal(progress.growth.level, 3);
     assert.equal(progress.tickets, 2);
-    assert.equal(progress.unseen.filter(event => event.type === 'teacher_bonus').length, 1);
+    assert.equal(progress.unseen.filter(event => event.type === 'teacher_bonus').length, 2);
+
+    state = await request('GET', `/api/checks/student-state?student_id=${student.id}`);
+    assert.equal(state.unseen_adjustments.length, 2, '일반 학생 화면에도 교사 별 조정 알림이 전달되어야 함');
+    await request('POST', '/api/rewards/progress/seen', { student_id: student.id, event_ids: state.unseen_adjustments.map(event => event.id) });
+    state = await request('GET', `/api/checks/student-state?student_id=${student.id}`);
+    assert.equal(state.unseen_adjustments.length, 0, '일반 학생 화면에서 확인한 알림은 다시 나오면 안 됨');
+    progress = await request('GET', `/api/rewards/progress/student?student_id=${student.id}`);
+    assert.equal(progress.unseen.filter(event => event.type === 'teacher_bonus').length, 0, '일반 학생 화면에서 확인한 알림은 보상 키오스크에도 나오면 안 됨');
+
+    await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: -4, reason: '범위 검사' }, 400);
+    await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: 2, reason: '조정 되돌림 검사' });
+    const deduction = await request('POST', '/api/rewards/progress/grant', { class_id: cls.id, student_id: student.id, amount: -3, reason: '약속을 다시 연습해요' });
+    assert.equal(deduction.applied_amount, -2, '확정 게이지보다 많은 차감은 0까지만 적용해야 함');
+    progress = await request('GET', `/api/rewards/progress/student?student_id=${student.id}`);
+    assert.equal(progress.growth.level, 3, '별 차감으로 이미 획득한 단계가 내려가면 안 됨');
+    assert.equal(progress.growth.progress_xp, 0);
+    assert.equal(progress.tickets, 2, '별 차감으로 이미 획득한 보상권이 회수되면 안 됨');
+
+    let adjustments = await request('GET', `/api/rewards/progress/adjustments?class_id=${cls.id}`);
+    const deductionEvent = adjustments.find(event => event.type === 'teacher_deduction');
+    assert.ok(deductionEvent);
+    const undone = await request('POST', `/api/rewards/progress/adjustments/${deductionEvent.id}/undo`, { class_id: cls.id });
+    assert.equal(undone.applied_amount, 2);
+    await request('POST', `/api/rewards/progress/adjustments/${deductionEvent.id}/undo`, { class_id: cls.id }, 409);
+    adjustments = await request('GET', `/api/rewards/progress/adjustments?class_id=${cls.id}`);
+    assert.equal(adjustments.find(event => event.id === deductionEvent.id).reversed, true);
 
     const item = await request('POST', '/api/rewards/shop/items', { class_id: cls.id, name: '음악 선택', cost: 1, stock: 1 });
     await request('POST', '/api/rewards/shop/redeem', { student_id: student.id, item_id: item.id }, 403);

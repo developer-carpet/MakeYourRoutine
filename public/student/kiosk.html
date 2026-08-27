@@ -86,10 +86,10 @@ async function refreshKiosk(){
 
 function showUnseen(){
   if(!starData?.unseen?.length)return;
-  const total=starData.unseen.reduce((sum,event)=>sum+Number(event.amount),0);
-  document.getElementById('noticeTitle').textContent=total>=0?`보너스 별이 성장 경험치로 바뀌었어요!`:'꾸준함 게이지에 변화가 있어요';
-  document.getElementById('noticeStars').textContent=total>=0?'⭐':'🌱';
-  document.getElementById('noticeReasons').innerHTML=starData.unseen.map(event=>`<div class="card" style="padding:9px;margin:7px 0;text-align:left;"><strong>${Number(event.amount)>0?'+':''}${event.amount} 경험치</strong> · ${escapeHtml(event.reason||'성장 기록')}</div>`).join('');
+  const hasDeduction=starData.unseen.some(event=>Number(event.amount)<0);
+  document.getElementById('noticeTitle').textContent=hasDeduction?'선생님이 성장 별을 조정했어요':'선생님에게 보너스 별을 받았어요!';
+  document.getElementById('noticeStars').textContent=hasDeduction?'⭐ ↕':'⭐';
+  document.getElementById('noticeReasons').innerHTML=starData.unseen.map(event=>`<div class="card" style="padding:9px;margin:7px 0;text-align:left;"><strong>성장 별 ${Number(event.amount)>0?'+':''}${event.amount}</strong> · ${escapeHtml(event.reason||'성장 기록')}</div>`).join('');
   document.getElementById('starNotice').classList.add('show');
 }
 

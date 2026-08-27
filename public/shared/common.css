@@ -169,6 +169,7 @@ input::placeholder { color: var(--color-silver); }
   margin-bottom: 16px;
 }
 .teacher-page-header h1 { margin: 0; }
+.teacher-nav-slot { margin-left: auto; min-width: 0; }
 .teacher-nav {
   display: flex;
   align-items: center;
@@ -210,6 +211,46 @@ input::placeholder { color: var(--color-silver); }
   font-weight: 700;
 }
 .student-finish-button { flex: 0 0 auto; }
+
+/* 학생 화면 공통 성장 별 알림 */
+.growth-notice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 18px;
+  background: rgba(40,42,52,.68);
+}
+.growth-notice-overlay.show { display: flex; }
+.growth-notice-card {
+  width: min(520px,100%);
+  max-height: calc(100vh - 36px);
+  overflow-y: auto;
+  padding: 26px;
+  border: 4px solid var(--color-sunshine-yellow);
+  border-radius: 26px;
+  background: var(--color-snow-white);
+  box-shadow: 0 20px 60px rgba(0,0,0,.23);
+  text-align: center;
+}
+.growth-notice-visual { min-height: 88px; display: flex; align-items: center; justify-content: center; gap: 5px; }
+.growth-notice-star { display: inline-block; font-size: clamp(50px,14vw,76px); animation: growthNoticeStar .72s cubic-bezier(.2,.9,.25,1.2) both; }
+.growth-notice-star.deduct { animation: growthNoticeDeduct .85s ease both; }
+.growth-notice-total { margin: 0 0 12px; color: #9a6800; font-size: 24px; font-weight: 900; }
+.growth-notice-total.negative { color: #b24646; }
+.growth-notice-reasons { display: grid; gap: 7px; margin: 12px 0; text-align: left; }
+.growth-notice-reason { padding: 10px 12px; border: 2px solid var(--color-cloud-gray); border-radius: 12px; background: var(--color-snow-white); }
+.growth-notice-gauge { height: 16px; margin: 14px 0 5px; overflow: hidden; border-radius: 9px; background: #eee8cf; }
+.growth-notice-gauge-fill { width: 0; height: 100%; border-radius: inherit; background: var(--color-sunshine-yellow); transition: width .9s ease .25s; }
+.growth-notice-error { min-height: 20px; margin: 6px 0 0; color: #c73535; font-size: 13px; }
+@keyframes growthNoticeStar { 0%{transform:scale(.15) rotate(-15deg);opacity:0} 72%{transform:scale(1.18) rotate(5deg)} 100%{transform:scale(1);opacity:1} }
+@keyframes growthNoticeDeduct { 0%{transform:scale(1);opacity:1} 55%{transform:scale(.86);opacity:.72} 100%{transform:scale(.92);opacity:.9} }
+@media (max-width:600px) {
+  .growth-notice-card { padding: 22px 18px; }
+  .growth-notice-card button { width: 100%; }
+}
 .section-tabs {
   position: sticky;
   top: 0;
@@ -248,6 +289,7 @@ input::placeholder { color: var(--color-silver); }
   .topbar .links a { padding: 8px 6px; font-size: 13.5px; }
   .teacher-page-header { align-items: stretch; }
   .teacher-page-header h1 { width: 100%; }
+  .teacher-nav-slot { width: 100%; margin-left: 0; overflow: hidden; }
   .teacher-nav {
     width: 100%;
     flex-wrap: nowrap;

@@ -51,6 +51,7 @@
 
 <script src="../shared/api.js"></script>
 <script src="../shared/tiers.js"></script>
+<script src="../shared/student-growth-notice.js"></script>
 <script>
 let studentId = sessionStorage.getItem('studentId');
 let classId = sessionStorage.getItem('studentClassId');
@@ -91,6 +92,11 @@ async function loadStudentState() {
     state = await API.get(`/api/checks/student-state?student_id=${studentId}`);
     lastLoadedAt = Date.now();
     renderState();
+    StudentGrowthNotice.show(state.unseen_adjustments, {
+      studentId,
+      growth: state.growth,
+      onConfirmed: () => { state.unseen_adjustments = []; }
+    });
     flushQueue();
   } catch (e) {
     document.getElementById('syncStatus').textContent = '연결을 확인하고 다시 시도할게요';

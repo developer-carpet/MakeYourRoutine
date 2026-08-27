@@ -262,7 +262,7 @@ async function loadStudentGrowthOverview(classId, date = todayStr()) {
   });
 }
 
-async function applyGrowthDelta({ classId, studentId, amount, date, type, reason, routineId = null, seenAt = null }) {
+async function applyGrowthDelta({ classId, studentId, amount, date, type, reason, routineId = null, seenAt = null, reversedEventId = null }) {
   const cls = await db.prepare(`SELECT xp_target FROM classes WHERE id = ?`).get(classId);
   if (!cls) throw new Error('class not found');
   const nextTarget = Math.max(1, Number(cls.xp_target || 25));
@@ -270,8 +270,8 @@ async function applyGrowthDelta({ classId, studentId, amount, date, type, reason
   const growth = await db.prepare(`SELECT * FROM student_growth WHERE student_id = ?`).get(studentId);
   const projected = projectGrowth(growth, amount, nextTarget);
   const writes = [{
-    sql: `INSERT INTO student_xp_events (class_id, student_id, date, routine_id, amount, type, reason, seen_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-    params: [classId, studentId, date, routineId, amount, type, reason || null, seenAt]
+    sql: `INSERT INTO student_xp_events (class_id, student_id, date, routine_id, amount, type, reason, seen_at, reversed_event_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    params: [classId, studentId, date, routineId, amount, type, reason || null, seenAt, reversedEventId]
   }, {
     sql: `UPDATE student_growth SET level=?, progress_xp=?, target_xp=?, tickets=tickets+?, updated_at=datetime('now') WHERE student_id=?`,
     params: [projected.level, projected.progress, projected.target, projected.levelsGained, studentId]
@@ -282,8 +282,26 @@ async function applyGrowthDelta({ classId, studentId, amount, date, type, reason
       params: [classId, studentId, date, projected.levelsGained, `레벨 ${projected.level} 달성`]
     });
   }
-  await db.batch(writes);
-  return { ...projected, tickets: Number(growth.tickets || 0) + projected.levelsGained };
+  const results = await db.batch(writes);
+  return { ...projected, event_id: results[0]?.lastInsertRowid, tickets: Number(growth.tickets || 0) + projected.levelsGained };
+}
+
+// 교사가 직접 조정한 성장 별 중 학생이 아직 확인해야 하는 기록만 반환한다.
+// 교사가 학생 확인 전에 조정을 되돌렸다면 원본과 되돌림을 모두 숨기고,
+// 학생이 원본을 본 뒤 되돌린 경우에만 되돌림 소식을 새로 보여준다.
+async function loadUnseenGrowthAdjustments(studentId) {
+  return db.prepare(
+    `SELECT e.id,e.student_id,e.amount,e.type,e.reason,e.created_at
+     FROM student_xp_events e
+     WHERE e.student_id=? AND e.seen_at IS NULL AND (
+       (e.type IN ('teacher_bonus','teacher_deduction')
+        AND NOT EXISTS(SELECT 1 FROM student_xp_events undo WHERE undo.reversed_event_id=e.id))
+       OR
+       (e.type='teacher_adjustment_undo'
+        AND EXISTS(SELECT 1 FROM student_xp_events original WHERE original.id=e.reversed_event_id AND original.seen_at IS NOT NULL))
+     )
+     ORDER BY e.id ASC LIMIT 20`
+  ).all(studentId);
 }
 
 async function finalizeDailyGrowth(classId, date = todayStr(), closeTimeOverride) {
@@ -416,6 +434,7 @@ module.exports = {
   applyDrawToGrowth,
   syncNoteGrowth,
   loadStudentGrowthOverview,
+  loadUnseenGrowthAdjustments,
   applyGrowthDelta,
   finalizeDailyGrowth,
   finalizeDueClasses

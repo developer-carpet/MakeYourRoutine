@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>전자칠판 모드</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<script src="../shared/teacher-nav.js" defer></script>
 <style>
   /* 다크 모드: common.css가 쓰는 색상 변수를 덮어써서 카드/버튼/글자색이 한번에 바뀌게 함 */
   body.dark {
@@ -19,17 +20,18 @@
   body.dark .note-btn.concern { background: #4a2024; color: #ff9b9b; }
   .dark-toggle-bar {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
-    max-width: 1400px; margin: 0 auto; padding: 14px 24px 0;
+    max-width: 1100px; margin: 0 auto; padding: 14px 16px 0;
   }
-  .dark-toggle-bar .teacher-page-header { margin: 0; min-width: 0; }
+  .dark-toggle-bar .teacher-nav-slot { min-width: 0; }
   .dark-toggle {
     background: var(--color-cloud-gray); color: var(--color-graphite);
     border: none; border-radius: 12px; font-size: 13px; font-weight: 700;
     padding: 8px 14px; cursor: pointer; box-shadow: none; width: auto;
   }
   @media (max-width: 600px) {
-    .dark-toggle-bar { padding: 10px 12px 0; align-items: flex-start; }
-    .dark-toggle-bar .teacher-page-header { flex: 1; overflow: hidden; }
+    .dark-toggle-bar { padding: 10px 12px 0; align-items: flex-start; flex-direction:column; }
+    .dark-toggle-bar .teacher-nav-slot { width:100%; overflow:hidden; }
+    .dark-toggle-bar .dark-toggle { align-self:flex-start; }
   }
   .container { max-width: 1400px; }
   h1 { font-size: 2.4rem; text-align: center; }
@@ -141,15 +143,7 @@
 <body>
 <div class="dark-toggle-bar">
   <button class="dark-toggle" id="darkToggle" onclick="toggleDarkMode()">🌙 다크 모드</button>
-  <div class="teacher-page-header" id="teacherBoardNav">
-    <nav class="teacher-nav" aria-label="교사 화면 이동">
-      <a href="index.html">대시보드</a>
-      <a class="active" href="board.html" aria-current="page">전자칠판</a>
-      <a href="routines.html">루틴 관리</a>
-      <a href="rewards.html">보상 관리</a>
-      <a href="stats.html">통계</a>
-    </nav>
-  </div>
+  <div class="teacher-nav-slot" id="teacherBoardNav" data-teacher-nav="board"></div>
 </div>
 <div class="container">
   <div id="boardView">
@@ -245,6 +239,7 @@
 <script src="../shared/api.js"></script>
 <script src="../shared/growth.js"></script>
 <script src="../shared/tiers.js"></script>
+<script src="../shared/student-growth-notice.js"></script>
 <script>
 function applyDarkMode(on) {
   document.body.classList.toggle('dark', on);
@@ -633,6 +628,14 @@ async function loadToday() {
       </div>`;
     }).join('')}
   `).join('');
+  StudentGrowthNotice.show(data.unseen_adjustments, {
+    studentId: activeStudentId,
+    growth: data.growth,
+    onConfirmed: () => {
+      data.unseen_adjustments = [];
+      if (activeRoutineState) activeRoutineState.unseen_adjustments = [];
+    }
+  });
 }
 
 function renderRoutineTier(data = activeRoutineState) {

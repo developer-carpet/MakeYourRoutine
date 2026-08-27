@@ -5,18 +5,13 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>루틴 관리</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<script src="../shared/teacher-nav.js" defer></script>
 </head>
 <body>
 <div class="container">
   <div class="teacher-page-header">
     <h1>루틴 관리</h1>
-    <nav class="teacher-nav" aria-label="교사 화면 이동">
-      <a href="index.html">대시보드</a>
-      <a href="board.html">전자칠판</a>
-      <a class="active" href="routines.html" aria-current="page">루틴 관리</a>
-      <a href="rewards.html">보상 관리</a>
-      <a href="stats.html">통계</a>
-    </nav>
+    <div class="teacher-nav-slot" data-teacher-nav="routines"></div>
   </div>
 
   <div class="card settings-card">

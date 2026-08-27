@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>통계</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<script src="../shared/teacher-nav.js" defer></script>
 <style>
   .weekly-chart { display:flex; align-items:stretch; gap:12px; height:190px; padding-top:8px; }
   .weekly-chart-column { flex:1; min-width:52px; display:flex; flex-direction:column; text-align:center; }
@@ -23,13 +24,7 @@
 <div class="container">
   <div class="teacher-page-header">
     <h1>주간 통계</h1>
-    <nav class="teacher-nav" aria-label="교사 화면 이동">
-      <a href="index.html">대시보드</a>
-      <a href="board.html">전자칠판</a>
-      <a href="routines.html">루틴 관리</a>
-      <a href="rewards.html">보상 관리</a>
-      <a class="active" href="stats.html" aria-current="page">통계</a>
-    </nav>
+    <div class="teacher-nav-slot" data-teacher-nav="stats"></div>
   </div>
 
   <div class="card summary-card">

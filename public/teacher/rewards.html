@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>보상 관리</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<script src="../shared/teacher-nav.js" defer></script>
 <style>
   .form-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; }
   .field label { display:block; color:var(--color-charcoal); font-size:14px; font-weight:800; margin-bottom:4px; }
@@ -22,6 +23,24 @@
   .reward-modal { position:fixed; inset:0; z-index:200; background:rgba(55,60,78,.6); display:none; align-items:center; justify-content:center; padding:16px; }
   .reward-modal.show { display:flex; }
   .reward-modal-card { width:min(440px,100%); background:white; border-radius:20px; padding:22px; }
+  .adjust-mode-switch { display:grid; grid-template-columns:1fr 1fr; gap:8px; margin:10px 0 16px; }
+  .adjust-mode-button { background:var(--color-cloud-gray); color:var(--color-graphite); box-shadow:none; border:2px solid transparent; }
+  .adjust-mode-button.add.active { background:#e9fbdc; border-color:var(--color-duo-green); color:var(--color-duo-green-dark); }
+  .adjust-mode-button.subtract.active { background:#fff0f0; border-color:#ef7777; color:#b52d35; }
+  .adjust-choice-row { display:flex; flex-wrap:wrap; gap:8px; }
+  .adjust-choice { width:auto; background:var(--color-snow-white); color:var(--color-graphite); border:2px solid var(--color-cloud-gray); box-shadow:none; }
+  .adjust-choice.active { border-color:#ffc700; background:#fff8d8; color:#765700; }
+  .adjust-reason-choice { font-size:13px; }
+  .adjust-preview { margin-top:14px; padding:11px 13px; border-radius:12px; background:#f7f7f7; color:var(--color-graphite); font-size:14px; font-weight:800; }
+  .adjustment-history { display:grid; gap:8px; margin-top:10px; }
+  .adjustment-history-row { display:flex; align-items:center; gap:10px; padding:10px 12px; border:1px solid var(--color-cloud-gray); border-radius:12px; }
+  .adjustment-history-amount { min-width:42px; font-size:17px; font-weight:900; text-align:center; }
+  .adjustment-history-amount.positive { color:var(--color-duo-green-dark); }
+  .adjustment-history-amount.negative { color:#b52d35; }
+  .adjustment-history-copy { flex:1; min-width:0; }
+  .adjustment-history-copy small { display:block; color:var(--color-silver); margin-top:2px; }
+  .adjustment-history-row button { width:auto; padding:7px 10px; font-size:12px; }
+  .adjustment-history-row.reversed { opacity:.62; }
   .milestone-row { display:grid; grid-template-columns:110px minmax(220px,1fr) auto; gap:8px; align-items:end; margin-top:8px; }
   .milestone-row button { min-width:72px; }
   .tier-catalog { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-top:12px; }
@@ -33,13 +52,7 @@
 <div class="container">
   <div class="teacher-page-header">
     <h1>보상 관리</h1>
-    <nav class="teacher-nav" aria-label="교사 화면 이동">
-      <a href="index.html">대시보드</a>
-      <a href="board.html">전자칠판</a>
-      <a href="routines.html">루틴 관리</a>
-      <a class="active" href="rewards.html" aria-current="page">보상 관리</a>
-      <a href="stats.html">통계</a>
-    </nav>
+    <div class="teacher-nav-slot" data-teacher-nav="rewards"></div>
   </div>
 
   <div class="section-tabs" id="rewardSectionTabs" role="tablist" aria-label="보상 관리 영역">
@@ -88,13 +101,16 @@
     <div class="form-grid" style="align-items:end;">
       <div class="field"><label>자동 마감 시간(오후 2시~8시 45분, 15분 단위)</label><input id="autoCloseTime" type="time" step="900" min="14:00" max="20:45" value="16:30" /></div>
       <div class="field"><label>휘장 한 단계의 공통 목표</label><input id="xpTarget" type="number" min="5" max="200" value="25" /></div>
-      <label style="display:flex;align-items:center;gap:8px;padding-bottom:10px;"><input id="xpDecayEnabled" type="checkbox" checked /> 반복 미완료 시 경험치 차감</label>
+      <label style="display:flex;align-items:center;gap:8px;padding-bottom:10px;"><input id="xpDecayEnabled" type="checkbox" checked /> 반복 미완료 시 성장 별 차감</label>
       <div class="field"><label>연속 미완료 기준</label><input id="xpDecayMisses" type="number" min="2" max="20" value="3" /></div>
-      <div class="field"><label>차감 경험치</label><input id="xpDecayAmount" type="number" min="1" max="10" value="1" /></div>
+      <div class="field"><label>차감할 별</label><input id="xpDecayAmount" type="number" min="1" max="10" value="1" /></div>
       <button onclick="saveGrowthSettings()">성장 설정 저장</button>
     </div>
     <div id="closeStatus" class="preview-box">마감 상태를 확인하고 있어요.</div>
     <div class="table-scroll"><table class="teacher-table" id="starStudentTable"></table></div>
+    <h3 style="margin:20px 0 4px;">최근 별 조정</h3>
+    <p class="helper-text" style="margin-top:0;">최근 30건을 확인하고 잘못 누른 조정을 되돌릴 수 있어요.</p>
+    <div id="adjustmentHistory" class="adjustment-history"></div>
   </div>
 
   <div class="card section-tab-panel" id="rewardSectionShop" data-section-panel="shop" role="tabpanel" hidden>
@@ -128,13 +144,22 @@
   </div>
 </div>
 
-<div class="reward-modal" id="grantModal">
+<div class="reward-modal" id="grantModal" role="dialog" aria-modal="true" aria-labelledby="grantTitle">
   <div class="reward-modal-card">
-    <h2 id="grantTitle">별 지급</h2>
-    <div class="field"><label>지급할 별</label><select id="grantAmount"><option value="1">⭐ 1개</option><option value="2">⭐⭐ 2개</option><option value="3">⭐⭐⭐ 3개</option></select></div>
-    <div class="field" style="margin-top:10px;"><label>지급 이유</label><select id="grantReasonPreset"><option>꾸준히 노력했어요</option><option>친구를 도와주었어요</option><option>어려운 일에 도전했어요</option><option>수업에 집중했어요</option><option value="custom">직접 입력</option></select></div>
-    <div class="field" id="customReasonWrap" style="display:none;margin-top:10px;"><label>직접 입력</label><input id="grantReasonCustom" placeholder="별을 주는 이유" /></div>
-    <div class="actions" style="margin-top:14px;"><button class="secondary" onclick="closeGrantModal()">취소</button><button onclick="submitGrantStar()">별 보내기</button></div>
+    <h2 id="grantTitle">별 조정</h2>
+    <div class="adjust-mode-switch" aria-label="별 조정 방식">
+      <button class="adjust-mode-button add active" id="grantModeAdd" type="button" onclick="setGrantMode('add')">＋ 별 추가</button>
+      <button class="adjust-mode-button subtract" id="grantModeSubtract" type="button" onclick="setGrantMode('subtract')">－ 별 차감</button>
+    </div>
+    <div class="field"><label>조정할 별 개수</label><div class="adjust-choice-row" id="grantAmountChoices">
+      <button class="adjust-choice active" type="button" data-amount="1" onclick="setGrantAmount(1)">⭐ 1개</button>
+      <button class="adjust-choice" type="button" data-amount="2" onclick="setGrantAmount(2)">⭐⭐ 2개</button>
+      <button class="adjust-choice" type="button" data-amount="3" onclick="setGrantAmount(3)">⭐⭐⭐ 3개</button>
+    </div></div>
+    <div class="field" style="margin-top:14px;"><label id="grantReasonLabel">추가 이유</label><div class="adjust-choice-row" id="grantReasonChoices"></div></div>
+    <div class="field" id="customReasonWrap" style="display:none;margin-top:10px;"><label for="grantReasonCustom">기타 사유</label><input id="grantReasonCustom" maxlength="80" placeholder="학생이 이해하기 쉬운 말로 적어주세요" /></div>
+    <div class="adjust-preview" id="grantPreview">별 1개를 추가합니다.</div>
+    <div class="actions" style="margin-top:14px;"><button class="secondary" type="button" onclick="closeGrantModal()">취소</button><button id="grantSubmitBtn" type="button" onclick="submitGrantStar()">별 추가하기</button></div>
   </div>
 </div>
 
@@ -176,8 +201,8 @@ function exclusions() { return document.getElementById('campaignExcluded').value
 function syncEndDate() { document.getElementById('campaignEnd').value=addDays(document.getElementById('campaignStart').value, Number(document.getElementById('campaignWeeks').value||1)*7-1); previewCampaign(); }
 
 async function loadAll() {
-  const [cls, campaign, gauges] = await Promise.all([
-    API.get(`/api/classes/${classId}`), API.get(`/api/rewards/growth/current?class_id=${classId}`), API.get(`/api/rewards/progress/students?class_id=${classId}`)
+  const [cls, campaign, gauges, adjustments] = await Promise.all([
+    API.get(`/api/classes/${classId}`), API.get(`/api/rewards/growth/current?class_id=${classId}`), API.get(`/api/rewards/progress/students?class_id=${classId}`), API.get(`/api/rewards/progress/adjustments?class_id=${classId}`)
   ]);
   activeCampaign=campaign;
   document.getElementById('autoCloseTime').value=cls.auto_close_time||'16:30';
@@ -191,6 +216,7 @@ async function loadAll() {
     : `<strong>오늘 ${cls.auto_close_time||'16:30'} 자동 마감 예정</strong> · 학생 완료 기록은 먼저 안전하게 저장되고 경험치는 이 시간에 확정됩니다.`;
   renderCampaign();
   renderStudents(gauges);
+  renderAdjustmentHistory(adjustments);
   loadShop();
 }
 
@@ -246,11 +272,91 @@ async function saveGrowthSettings(){
   await API.put(`/api/classes/${classId}`,{auto_close_time:time,xp_target:Number(document.getElementById('xpTarget').value),xp_decay_enabled:document.getElementById('xpDecayEnabled').checked,xp_decay_misses:Number(document.getElementById('xpDecayMisses').value),xp_decay_amount:Number(document.getElementById('xpDecayAmount').value)});
   alert('개인 성장과 자동 마감 설정을 저장했어요. 변경한 목표는 다음 휘장부터 적용됩니다.'); loadAll();
 }
-function renderStudents(gauges){ students=gauges; document.getElementById('starStudentTable').innerHTML='<tr><th>학생</th><th>오늘 루틴</th><th>성장 게이지</th><th>휘장·보상권</th><th>추가 지급</th></tr>'+gauges.map(g=>{const tier=GrowthTiers.get(g.projected_level);return `<tr><td>${g.nickname}</td><td>${g.is_absent?'결석':`${g.completed_count}/${g.total_count}`}</td><td><div class="mini-gauge"><div style="width:${g.projected_percent}%"></div></div> ${g.projected_percent}% ${g.finalized?'(확정)':'(진행 중)'}</td><td><div style="display:flex;align-items:center;justify-content:center;gap:7px;">${GrowthTiers.badge(g.projected_level,'tier-badge-sm')}<span>${tier.displayName}<br>🎟️ ${g.tickets}장</span></div></td><td><button class="secondary" onclick="openGrantModal(${g.student_id},'${g.nickname.replace(/'/g,"\\'")}')">보너스 별</button></td></tr>`;}).join(''); }
-let grantStudentId=null;
-function openGrantModal(id,name){ grantStudentId=id;document.getElementById('grantTitle').textContent=`${name}에게 별 지급`;document.getElementById('grantAmount').value='1';document.getElementById('grantReasonPreset').value='꾸준히 노력했어요';document.getElementById('grantReasonCustom').value='';document.getElementById('customReasonWrap').style.display='none';document.getElementById('grantModal').classList.add('show'); }
+function renderStudents(gauges){ students=gauges; document.getElementById('starStudentTable').innerHTML='<tr><th>학생</th><th>오늘 루틴</th><th>성장 게이지</th><th>휘장·보상권</th><th>별 조정</th></tr>'+gauges.map(g=>{const tier=GrowthTiers.get(g.projected_level);return `<tr><td>${escapeHtml(g.nickname)}</td><td>${g.is_absent?'결석':`${g.completed_count}/${g.total_count}`}</td><td><div class="mini-gauge"><div style="width:${g.projected_percent}%"></div></div> ${g.projected_percent}% ${g.finalized?'(확정)':'(진행 중)'}</td><td><div style="display:flex;align-items:center;justify-content:center;gap:7px;">${GrowthTiers.badge(g.projected_level,'tier-badge-sm')}<span>${tier.displayName}<br>🎟️ ${g.tickets}장</span></div></td><td><button class="secondary" onclick="openGrantModal(${g.student_id})">＋ / － 조정</button></td></tr>`;}).join(''); }
+
+const grantReasons = {
+  add: ['꾸준히 노력했어요','친구를 도와주었어요','어려운 일에 도전했어요','수업에 집중했어요'],
+  subtract: ['루틴 약속을 반복해서 놓쳤어요','수업 준비 약속을 지키지 못했어요','안전 약속을 지키지 못했어요','배려하는 말과 행동을 다시 연습해야 해요']
+};
+let grantStudentId=null, grantMode='add', grantAmount=1, grantReason='', grantAvailableToDeduct=0;
+
+function openGrantModal(id){
+  grantStudentId=id;
+  const student=students.find(row=>Number(row.student_id)===Number(id));
+  grantAvailableToDeduct=Math.max(0,Number(student?.progress_xp||0));
+  document.getElementById('grantTitle').textContent=`${student?.nickname||'학생'}의 별 조정`;
+  document.getElementById('grantReasonCustom').value='';
+  setGrantAmount(1);
+  setGrantMode('add');
+  document.getElementById('grantModal').classList.add('show');
+}
 function closeGrantModal(){grantStudentId=null;document.getElementById('grantModal').classList.remove('show');}
-async function submitGrantStar(){ const preset=document.getElementById('grantReasonPreset').value;const reason=preset==='custom'?document.getElementById('grantReasonCustom').value.trim():preset;if(!reason)return alert('별을 주는 이유를 입력해주세요');try{await API.post('/api/rewards/progress/grant',{class_id:classId,student_id:grantStudentId,amount:Number(document.getElementById('grantAmount').value),reason});closeGrantModal();alert('보너스 별을 보냈어요! 별은 즉시 경험치로 바뀌며 키오스크에서 알림을 확인할 수 있어요.');loadAll();}catch(e){alert(e.message);} }
+function setGrantMode(mode){
+  grantMode=mode==='subtract'?'subtract':'add';
+  document.getElementById('grantModeAdd').classList.toggle('active',grantMode==='add');
+  document.getElementById('grantModeSubtract').classList.toggle('active',grantMode==='subtract');
+  document.getElementById('grantReasonLabel').textContent=grantMode==='add'?'추가 이유':'차감 이유';
+  document.getElementById('grantSubmitBtn').textContent=grantMode==='add'?'별 추가하기':'별 차감하기';
+  document.getElementById('grantSubmitBtn').className=grantMode==='add'?'':'danger';
+  renderGrantReasonChoices();
+  updateGrantPreview();
+}
+function setGrantAmount(amount){
+  grantAmount=Math.max(1,Math.min(3,Number(amount)||1));
+  document.querySelectorAll('#grantAmountChoices [data-amount]').forEach(button=>button.classList.toggle('active',Number(button.dataset.amount)===grantAmount));
+  updateGrantPreview();
+}
+function renderGrantReasonChoices(){
+  grantReason=grantReasons[grantMode][0];
+  document.getElementById('customReasonWrap').style.display='none';
+  document.getElementById('grantReasonChoices').innerHTML=[...grantReasons[grantMode],'custom'].map((reason,index)=>`<button class="adjust-choice adjust-reason-choice ${index===0?'active':''}" type="button" data-reason="${escapeHtml(reason)}" onclick="setGrantReason(this.dataset.reason,this)">${reason==='custom'?'기타 · 직접 입력':escapeHtml(reason)}</button>`).join('');
+}
+function setGrantReason(reason,button){
+  grantReason=reason;
+  document.querySelectorAll('#grantReasonChoices .adjust-reason-choice').forEach(item=>item.classList.toggle('active',item===button));
+  const custom=reason==='custom';
+  document.getElementById('customReasonWrap').style.display=custom?'block':'none';
+  if(custom)document.getElementById('grantReasonCustom').focus();
+}
+function updateGrantPreview(){
+  const verb=grantMode==='add'?'추가':'차감';
+  const submit=document.getElementById('grantSubmitBtn');
+  submit.disabled=grantMode==='subtract'&&!grantAvailableToDeduct;
+  document.getElementById('grantPreview').textContent=grantMode==='add'
+    ? `별 ${grantAmount}개를 ${verb}합니다. 별은 즉시 확정 성장 게이지에 반영됩니다.`
+    : grantAvailableToDeduct
+      ? `별 ${grantAmount}개를 차감합니다. 현재 확정 게이지에서는 최대 ${Math.min(3,grantAvailableToDeduct)}개까지 차감할 수 있어요.`
+      : '현재 차감할 수 있는 확정 성장 게이지가 없어요. 오늘 루틴 별은 자동 마감 뒤 확정됩니다.';
+}
+async function submitGrantStar(){
+  const reason=grantReason==='custom'?document.getElementById('grantReasonCustom').value.trim():grantReason;
+  if(!reason)return alert('별을 조정하는 이유를 입력해주세요');
+  if(grantMode==='subtract'&&!confirm(`별 ${grantAmount}개를 차감할까요? 이미 받은 휘장과 보상권은 유지됩니다.`))return;
+  try{
+    const requested=grantMode==='add'?grantAmount:-grantAmount;
+    const result=await API.post('/api/rewards/progress/grant',{class_id:classId,student_id:grantStudentId,amount:requested,reason});
+    closeGrantModal();
+    const applied=Math.abs(Number(result.applied_amount));
+    const limited=applied!==grantAmount?` 현재 확정 게이지 범위에서 ${applied}개만 반영했어요.`:'';
+    alert(grantMode==='add'?`별 ${applied}개를 추가했어요. 키오스크에서 이유를 확인할 수 있어요.`:`별 ${applied}개를 차감했어요. 이미 획득한 휘장과 보상권은 유지됩니다.${limited}`);
+    loadAll();
+  }catch(e){alert(e.message);}
+}
+
+function renderAdjustmentHistory(rows){
+  const target=document.getElementById('adjustmentHistory');
+  target.innerHTML=rows.map(row=>{
+    const amount=Number(row.amount),positive=amount>0;
+    const created=String(row.created_at||'');
+    const parsed=created?new Date(created.replace(' ','T')+'Z'):null;
+    const when=parsed&&!Number.isNaN(parsed.getTime())?parsed.toLocaleString('ko-KR',{month:'numeric',day:'numeric',hour:'2-digit',minute:'2-digit'}):created;
+    return `<div class="adjustment-history-row ${row.reversed?'reversed':''}"><div class="adjustment-history-amount ${positive?'positive':'negative'}">${positive?'+':''}${amount}</div><div class="adjustment-history-copy"><strong>${escapeHtml(row.nickname)}</strong> · ${escapeHtml(row.reason||'사유 없음')}<small>${when}${row.reversed?' · 되돌림 완료':''}</small></div>${row.reversed?'<span class="status-pill closed">완료</span>':`<button class="secondary" type="button" onclick="undoAdjustment(${row.id})">되돌리기</button>`}</div>`;
+  }).join('')||'<p class="helper-text">아직 교사가 조정한 별 기록이 없어요.</p>';
+}
+async function undoAdjustment(id){
+  if(!confirm('이 별 조정을 되돌릴까요? 획득한 휘장과 보상권은 회수되지 않습니다.'))return;
+  try{await API.post(`/api/rewards/progress/adjustments/${id}/undo`,{class_id:classId});alert('별 조정을 되돌렸어요.');loadAll();}catch(e){alert(e.message);}
+}
 
 let shopTimer=null;
 async function loadShop(){ const [status,items,redemptions]=await Promise.all([API.get(`/api/rewards/shop/status?class_id=${classId}`),API.get(`/api/rewards/shop/items?class_id=${classId}`),API.get(`/api/rewards/shop/redemptions?class_id=${classId}&status=pending`)]); document.getElementById('shopStatus').innerHTML=status.open?'<span class="status-pill open">상점 열림</span> 학생들이 지금 교환을 요청할 수 있어요.':'<span class="status-pill closed">상점 닫힘</span> 보상권은 안전하게 보관되며 상점을 열 때만 사용할 수 있어요.'; document.getElementById('shopItems').innerHTML=items.filter(i=>i.active).map(i=>`<div class="shop-item"><strong>${i.name}</strong><div class="price">🎟️ ${i.cost}장</div><small>${i.stock==null?'재고 무제한':`남은 재고 ${i.stock}`}</small><div><button class="danger" onclick="disableItem(${i.id})" style="margin-top:8px;">판매 중지</button></div></div>`).join('')||'<p>등록한 상품이 없어요.</p>'; document.getElementById('redemptions').innerHTML=redemptions.map(r=>`<div class="card" style="padding:10px;"><strong>${r.nickname}</strong> · ${r.item_name} (🎟️ ${r.cost}장) <button onclick="approve(${r.id})">승인</button> <button class="danger" onclick="reject(${r.id})">반려</button></div>`).join('')||'<p class="helper-text">대기 중인 요청이 없어요.</p>'; clearTimeout(shopTimer);if(status.open)shopTimer=setTimeout(loadShop,60000); }
@@ -269,7 +375,6 @@ document.getElementById('campaignWeeks').addEventListener('input',syncEndDate);
 ['campaignStart','campaignDifficulty'].forEach(id=>document.getElementById(id).addEventListener('change',id==='campaignStart'?syncEndDate:previewCampaign));
 document.getElementById('autoTarget').addEventListener('change',e=>{document.getElementById('manualTargetWrap').style.display=e.target.checked?'none':'block';previewCampaign();});
 document.getElementById('campaignTheme').addEventListener('change',renderTest);
-document.getElementById('grantReasonPreset').addEventListener('change',e=>document.getElementById('customReasonWrap').style.display=e.target.value==='custom'?'block':'none');
 document.getElementById('milestoneRows').addEventListener('input',renderTest);
 showRewardSection(location.hash.slice(1), false);
 renderTierCatalog(); renderTest(); loadAll();

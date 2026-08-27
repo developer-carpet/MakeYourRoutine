@@ -1,7 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { todayStr, dowOf, addDays, isPastDeadline, isBeforeStart } = require('../utils');
-const { loadStudentGrowthOverview, finalizeDueClasses } = require('../reward-service');
+const { loadStudentGrowthOverview, loadUnseenGrowthAdjustments, finalizeDueClasses } = require('../reward-service');
 const router = express.Router();
 
 async function activeRoutinesFor(classId, studentId, date) {
@@ -116,16 +116,18 @@ router.get('/student-state', async (req, res) => {
   const student = await db.prepare(`SELECT id,class_id,nickname,number,points FROM students WHERE id=?`).get(req.query.student_id);
   if (!student) return res.status(404).json({ error: '학생을 찾을 수 없어요' });
   await finalizeDueClasses(student.class_id);
-  const [today, growthRows, encouragements] = await Promise.all([
+  const [today, growthRows, encouragements, unseenAdjustments] = await Promise.all([
     buildTodayState(student.class_id, student.id),
     loadStudentGrowthOverview(student.class_id),
-    db.prepare(`SELECT * FROM encouragements WHERE to_student_id=? AND read_at IS NULL ORDER BY created_at DESC LIMIT 10`).all(student.id)
+    db.prepare(`SELECT * FROM encouragements WHERE to_student_id=? AND read_at IS NULL ORDER BY created_at DESC LIMIT 10`).all(student.id),
+    loadUnseenGrowthAdjustments(student.id)
   ]);
   res.json({
     student,
     ...today,
     growth: growthRows.find(row => row.student_id === Number(student.id)) || null,
-    encouragements
+    encouragements,
+    unseen_adjustments: unseenAdjustments
   });
 });
 
