@@ -54,6 +54,7 @@
 </div>
 
 <script src="../shared/api.js"></script>
+<script src="../shared/tiers.js"></script>
 <script>
 let student=null, starData=null, classId=null, logoutSeconds=0, logoutInterval=null;
 
@@ -79,7 +80,7 @@ async function refreshKiosk(){
   starData=stars;
   document.getElementById('balance').textContent=`내 보상권 🎟️ ${stars.tickets}장`;
   const g=stars.growth;
-  if(g){const pct=g.finalized?g.percent:g.projected_percent;const level=g.finalized?g.level:g.projected_level;document.getElementById('todayGauge').innerHTML=`<div style="display:flex;justify-content:space-between"><strong>Lv. ${level} 나의 성장</strong><strong>${pct}%</strong></div><div class="star-gauge-track" style="margin:8px 0;"><div class="star-gauge-fill" style="width:${pct}%"></div></div><small>${g.finalized?'오늘의 성장이 확정되었어요.':'완료한 별은 자동 마감 시간에 확정돼요.'}</small>`;}
+  if(g){const pct=g.finalized?g.percent:g.projected_percent;const level=g.finalized?g.level:g.projected_level;const tier=GrowthTiers.get(level);document.getElementById('todayGauge').innerHTML=`<div class="growth-tier-heading">${GrowthTiers.badge(level,'tier-badge-lg')}<div class="growth-tier-copy"><span class="growth-tier-name">${tier.displayName}</span><span class="growth-tier-chapter">${tier.chapter}</span></div><strong>${pct}%</strong></div><div class="star-gauge-track" style="margin:8px 0;"><div class="star-gauge-fill" style="width:${pct}%"></div></div><small>다음: ${tier.nextName} · ${g.finalized?'오늘의 휘장 성장이 확정되었어요.':'완료한 별은 자동 마감 시간에 확정돼요.'}</small>`;}
   renderShop(shop);
 }
 

@@ -34,30 +34,32 @@
   </div>
 
   <div id="mainView" style="display:none;">
-    <div class="topbar">
+    <div class="teacher-page-header">
       <h1 id="className">학급</h1>
-      <div class="links">
+      <nav class="teacher-nav" aria-label="교사 화면 이동">
+        <a class="active" href="index.html" aria-current="page">대시보드</a>
+        <a href="board.html">전자칠판</a>
         <a href="routines.html">루틴 관리</a>
-        <a href="board.html">전자칠판 모드</a>
-        <a href="stats.html">통계</a>
         <a href="rewards.html">보상 관리</a>
-        <a href="../student/index.html">학생 화면으로</a>
+        <a href="stats.html">통계</a>
+      </nav>
+      <div class="teacher-utility-links">
         <a href="#" onclick="logout(); location.href='../index.html';">처음으로</a>
         <a href="#" onclick="logout()">로그아웃</a>
       </div>
     </div>
 
-    <div class="card">
+    <div class="card summary-card">
       <h2>오늘 우리 반 달성률</h2>
       <div class="gauge-wrap">
         <div class="gauge-bar"><div class="gauge-fill" id="classGaugeFill" style="width:0%"></div></div>
         <strong id="classGaugeLabel">0%</strong>
       </div>
       <p id="rewardText" style="color:var(--color-graphite); font-size:14px;"></p>
-      <button class="secondary" onclick="dayEnd()">오늘 지금 마감하기(예외)</button>
+      <button class="warning" onclick="dayEnd()">오늘 지금 마감하기(예외)</button>
     </div>
 
-    <div class="card">
+    <div class="card settings-card">
       <h2>학생 등록</h2>
       <div class="tabbar">
         <button class="tab-btn active" id="tabManage" onclick="switchStudentTab('manage')">학생 관리</button>
@@ -178,7 +180,7 @@ async function loadStudents() {
       <td>${s.nickname}${s.routine_exempt ? ' <span style="color:var(--color-silver); font-size:12px;">(루틴 예외)</span>' : ''}</td>
       <td><input class="code-input" id="code-${s.id}" value="${s.login_code}" maxlength="4" /></td>
       <td><button class="secondary" onclick="saveCode(${s.id})">저장</button></td>
-      <td><button class="secondary" onclick="removeStudent(${s.id})">삭제</button></td>
+      <td><button class="danger" onclick="removeStudent(${s.id})">삭제</button></td>
     </tr>`).join('');
 
   const exemptTable = document.getElementById('exemptTable');
@@ -304,7 +306,7 @@ async function sendEncouragement(studentId, nickname) {
 async function dayEnd() {
   if (!confirm('설정된 자동 마감 시간을 기다리지 않고 지금 마감할까요? 마감 후에는 학생이 오늘 기록을 수정할 수 없습니다.')) return;
   const summary = await API.post('/api/stats/day-end', { class_id: classId });
-  alert(`오늘 마감 완료!\n전체 루틴 ${summary.total_routines}개 중 ${summary.completed_routines}개 완료 (${Math.round(summary.completion_rate * 100)}%)\n참여 학생: ${summary.participants}명\n경험치 별 ${summary.growth?.routines_awarded || 0}개 확정 · 레벨업 ${summary.growth?.levels_gained || 0}회`);
+  alert(`오늘 마감 완료!\n전체 루틴 ${summary.total_routines}개 중 ${summary.completed_routines}개 완료 (${Math.round(summary.completion_rate * 100)}%)\n참여 학생: ${summary.participants}명\n성장 별 ${summary.growth?.routines_awarded || 0}개 확정 · 휘장 상승 ${summary.growth?.levels_gained || 0}회`);
 }
 
 if (classId) showMain(); else showSetup();

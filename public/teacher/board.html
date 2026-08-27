@@ -18,16 +18,18 @@
   }
   body.dark .note-btn.concern { background: #4a2024; color: #ff9b9b; }
   .dark-toggle-bar {
-    display: flex; justify-content: flex-end;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
     max-width: 1400px; margin: 0 auto; padding: 14px 24px 0;
   }
+  .dark-toggle-bar .teacher-page-header { margin: 0; min-width: 0; }
   .dark-toggle {
     background: var(--color-cloud-gray); color: var(--color-graphite);
     border: none; border-radius: 12px; font-size: 13px; font-weight: 700;
     padding: 8px 14px; cursor: pointer; box-shadow: none; width: auto;
   }
   @media (max-width: 600px) {
-    .dark-toggle-bar { padding: 10px 12px 0; }
+    .dark-toggle-bar { padding: 10px 12px 0; align-items: flex-start; }
+    .dark-toggle-bar .teacher-page-header { flex: 1; overflow: hidden; }
   }
   .container { max-width: 1400px; }
   h1 { font-size: 2.4rem; text-align: center; }
@@ -139,12 +141,21 @@
 <body>
 <div class="dark-toggle-bar">
   <button class="dark-toggle" id="darkToggle" onclick="toggleDarkMode()">🌙 다크 모드</button>
+  <div class="teacher-page-header" id="teacherBoardNav">
+    <nav class="teacher-nav" aria-label="교사 화면 이동">
+      <a href="index.html">대시보드</a>
+      <a class="active" href="board.html" aria-current="page">전자칠판</a>
+      <a href="routines.html">루틴 관리</a>
+      <a href="rewards.html">보상 관리</a>
+      <a href="stats.html">통계</a>
+    </nav>
+  </div>
 </div>
 <div class="container">
   <div id="boardView">
-    <a class="back" href="index.html" id="backLink">&larr; 대시보드</a>
+    <a class="back" href="index.html" id="backLink" style="display:none;">&larr; 처음 화면</a>
     <h1 id="className">우리 반 오늘의 루틴</h1>
-    <div class="card">
+    <div class="card summary-card">
       <div class="gauge-wrap">
         <div class="gauge-bar"><div class="gauge-fill" id="classGaugeFill" style="width:0%"></div></div>
         <strong id="classGaugeLabel">0%</strong>
@@ -159,7 +170,7 @@
       <div id="classNoteBox" style="margin-top:10px; display:flex; align-items:center; gap:10px; flex-wrap:wrap;">
         <button class="note-btn praise" style="font-size:14px; padding:10px 16px;" onclick="openNoteOverlay('praise')">👍 우리 반 칭찬하기</button>
         <button class="note-btn concern" style="font-size:14px; padding:10px 16px;" onclick="openNoteOverlay('concern')">😟 우리 반 아쉬운 점</button>
-        <span id="classNoteSummary" style="font-size:13px; color:var(--color-graphite);"></span>
+        <span id="classNoteSummary" style="font-size:14px; color:var(--color-graphite); font-weight:700;"></span>
       </div>
     </div>
     <div class="tabbar">
@@ -173,8 +184,9 @@
   <div id="routineView">
     <div class="topbar">
       <h1 id="routineGreeting">안녕!</h1>
-      <button id="backToBoard" class="secondary" onclick="backToBoard()">반 전체 화면으로</button>
+      <button id="backToBoard" class="secondary student-finish-button" onclick="backToBoard()">확인 끝! 전자칠판으로</button>
     </div>
+    <div id="routineTierCard" class="card star-gauge-card" style="display:none;"></div>
     <div id="routineList"></div>
   </div>
 </div>
@@ -232,6 +244,7 @@
 
 <script src="../shared/api.js"></script>
 <script src="../shared/growth.js"></script>
+<script src="../shared/tiers.js"></script>
 <script>
 function applyDarkMode(on) {
   document.body.classList.toggle('dark', on);
@@ -252,8 +265,10 @@ if (!classId) location.href = '../index.html';
 
 const backLink = document.getElementById('backLink');
 if (!isTeacherMode) {
-  backLink.href = '../student/index.html';
-  backLink.textContent = '← 나의 루틴으로';
+  document.getElementById('teacherBoardNav').style.display = 'none';
+  backLink.style.display = 'inline-block';
+  backLink.href = '../index.html';
+  backLink.textContent = '← 처음 화면';
   // 학생 모드에서는 학급 전체 뽑기, 칭찬/아쉬움 기록, 루틴별 통계 탭을 숨김 (교사 전용 기능)
   document.getElementById('classDrawBox').style.display = 'none';
   document.getElementById('classNoteBox').style.display = 'none';
@@ -264,6 +279,7 @@ let stopBoardPolling = null;
 let stopRoutinePolling = null;
 let pendingStudent = null;
 let activeStudentId = null;
+let activeRoutineState = null;
 let preloadedTodayPromise = null;
 let currentGrowthCampaign = null;
 let pendingGrowthCampaign = null;
@@ -272,7 +288,8 @@ let growthAutoTimer = null;
 
 async function loadBoard() {
   const data = await API.get(`/api/stats/dashboard?class_id=${classId}`);
-  currentGrowthCampaign = data.growth_campaign;
+  const campaign = data.growth_campaign || null;
+  currentGrowthCampaign = campaign;
   const growthBtn = document.getElementById('growthBoardOpenBtn');
   growthBtn.style.display = campaign ? 'inline-block' : 'none';
   growthBtn.textContent = campaign
@@ -529,9 +546,9 @@ function openCodeOverlay(studentId, nickname) {
   document.getElementById('codeInput').focus();
 }
 
-function closeCodeOverlay() {
+function closeCodeOverlay(clearPreload = true) {
   pendingStudent = null;
-  preloadedTodayPromise = null;
+  if (clearPreload) preloadedTodayPromise = null;
   document.getElementById('codeOverlay').classList.remove('show');
 }
 
@@ -545,8 +562,8 @@ async function submitCode() {
       return;
     }
     // 코드 확인과 동시에 루틴 데이터 로드 시작 (화면 전환 기다리지 않고 병렬)
-    preloadedTodayPromise = API.get(`/api/checks/today?class_id=${classId}&student_id=${s.id}`).catch(() => null);
-    closeCodeOverlay();
+    preloadedTodayPromise = API.get(`/api/checks/student-state?student_id=${s.id}`).catch(() => null);
+    closeCodeOverlay(false);
     enterRoutineView(s.id, s.nickname);
   } catch (e) {
     alert('코드를 다시 확인해주세요');
@@ -564,6 +581,8 @@ function enterRoutineView(studentId, nickname) {
 
 function backToBoard() {
   activeStudentId = null;
+  activeRoutineState = null;
+  preloadedTodayPromise = null;
   if (stopRoutinePolling) { stopRoutinePolling(); stopRoutinePolling = null; }
   document.getElementById('routineView').style.display = 'none';
   document.getElementById('boardView').style.display = 'block';
@@ -585,7 +604,9 @@ async function loadToday() {
     preloadedTodayPromise = null;
     data = await p;
   }
-  if (!data) data = await API.get(`/api/checks/today?class_id=${classId}&student_id=${activeStudentId}`);
+  if (!data) data = await API.get(`/api/checks/student-state?student_id=${activeStudentId}`);
+  activeRoutineState = data;
+  renderRoutineTier(data);
   const slots = {};
   data.routines.forEach(r => {
     slots[r.time_slot] = slots[r.time_slot] || [];
@@ -608,38 +629,76 @@ async function loadToday() {
           ${r.not_started && !done ? `<div style="font-size:13px; color:#c0392b; margin-top:2px;">시작 시간(${r.start_time}) 전이에요</div>` : ''}
           ${r.locked && !r.not_started && !done ? `<div style="font-size:13px; color:#c0392b; margin-top:2px;">마감(${r.deadline_time}) 지났어요</div>` : ''}
         </div>
-        <div class="check-btn ${done ? 'done' : ''} ${r.locked ? 'locked' : ''}" data-target="${r.target_count}" onclick="${r.locked ? '' : `toggle(${r.id}, this)`}">${done ? '✓' : (r.locked ? '🔒' : '')}</div>
+        <div class="check-btn ${done ? 'done' : ''} ${r.locked ? 'locked' : ''}" data-target="${r.target_count}" data-count="${r.check.count || 0}" onclick="${r.locked ? '' : `toggle(${r.id}, this)`}">${done ? '✓' : (r.locked ? '🔒' : '')}</div>
       </div>`;
     }).join('')}
   `).join('');
+}
+
+function renderRoutineTier(data = activeRoutineState) {
+  const box = document.getElementById('routineTierCard');
+  const growth = data?.growth;
+  if (!growth) { box.style.display = 'none'; return; }
+  let level = Number(growth.level || 1);
+  let progress = Number(growth.progress_xp || 0);
+  const target = Math.max(1, Number(growth.target_xp || 25));
+  if (!data.finalized) {
+    progress += (data.routines || []).filter(routine => routine.check?.completed).length;
+    while (progress >= target) { progress -= target; level += 1; }
+  }
+  const pct = Math.max(0, Math.min(100, Math.round(progress / target * 100)));
+  const tier = GrowthTiers.get(level);
+  box.style.display = 'block';
+  box.innerHTML = `<div class="growth-tier-heading">
+      ${GrowthTiers.badge(level, 'tier-badge-lg')}
+      <div class="growth-tier-copy"><span class="growth-tier-name">${tier.displayName}</span><span class="growth-tier-chapter">${tier.chapter}</span></div>
+      <strong class="growth-percent">${pct}%</strong>
+    </div>
+    <div class="star-gauge-track" style="margin:9px 0 5px;"><div class="star-gauge-fill" style="width:${pct}%"></div></div>
+    <div style="font-size:13px;color:var(--color-graphite);">다음: ${tier.nextName} · 완료한 별은 자동 마감 시간에 확정돼요.</div>`;
 }
 
 function toggle(routineId, el) {
   // 서버 응답을 기다리지 않고 누르는 즉시 화면을 먼저 바꿔서(낙관적 업데이트) 반응이 느려 보이지 않게 함.
   // 이전엔 toggle API 응답을 기다린 뒤 today 전체를 다시 불러와 화면을 다시 그렸는데,
   // 원격 DB 왕복이 두 번(toggle + today) 걸려 체크표시가 뜨는 데 오래 걸렸음.
-  const wasDone = el.classList.contains('done');
-  el.classList.toggle('done', !wasDone);
-  el.textContent = !wasDone ? '✓' : '';
+  const routine = activeRoutineState?.routines?.find(item => Number(item.id) === Number(routineId));
+  const wasDone = routine ? !!routine.check.completed : el.classList.contains('done');
+  const previousCount = routine ? Number(routine.check.count || 0) : Number(el.dataset.count || 0);
+  const target = Math.max(1, Number(el.dataset.target || 1));
+  const optimisticCount = wasDone ? 0 : Math.min(target, previousCount + 1);
+  const optimisticDone = optimisticCount >= target;
+  if (routine) { routine.check.count = optimisticCount; routine.check.completed = optimisticDone; }
+  el.dataset.count = optimisticCount;
+  el.classList.toggle('done', optimisticDone);
+  el.textContent = optimisticDone ? '✓' : '';
+  const countEl = document.getElementById(`count-${routineId}`);
+  if (countEl) countEl.textContent = target > 1 ? ` (${optimisticCount}/${target})` : '';
+  renderRoutineTier();
   el.classList.add('bump');
   setTimeout(() => el.classList.remove('bump'), 200);
 
   API.post('/api/checks/toggle', { routine_id: routineId, student_id: activeStudentId })
     .then(res => {
       // 실제 서버 상태로 보정 (횟수형 루틴처럼 추정과 다를 수 있는 부분까지 정확히 맞춤)
+      if (routine) { routine.check.count = res.count; routine.check.completed = res.completed; }
+      el.dataset.count = res.count;
       el.classList.toggle('done', res.completed);
       el.textContent = res.completed ? '✓' : '';
-      const target = Number(el.dataset.target || 1);
-      const countEl = document.getElementById(`count-${routineId}`);
       if (countEl) countEl.textContent = target > 1 ? ` (${res.count}/${target})` : '';
+      renderRoutineTier();
       if (res.completed) {
         document.getElementById('doneSound').play().catch(() => {});
         showToast('잘했어요! 완료했어요 🎉');
       }
     })
     .catch(e => {
+      if (routine) { routine.check.count = previousCount; routine.check.completed = wasDone; }
+      el.dataset.count = previousCount;
       el.classList.toggle('done', wasDone);
       el.textContent = wasDone ? '✓' : '';
+      if (countEl) countEl.textContent = target > 1 ? ` (${previousCount}/${target})` : '';
+      renderRoutineTier();
       alert(e.message);
     });
 }

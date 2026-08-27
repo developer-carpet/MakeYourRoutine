@@ -14,26 +14,27 @@
   .growth-percent { color:#a56700; font-size:22px; font-weight:900; }
 </style>
 </head>
-<body>
+<body class="student-routine-page">
 <div class="container">
-  <div id="loginView" class="card" style="display:none; max-width:360px; margin:60px auto;">
-    <h2 style="text-align:center;">로그인</h2>
-    <input id="loginCode" placeholder="내 코드 입력 (4자리)" style="width:100%; text-align:center; font-size:24px; letter-spacing:4px;" maxlength="4" inputmode="numeric" enterkeyhint="go" onkeydown="if(event.key==='Enter') login()" />
-    <button style="width:100%; margin-top:10px;" onclick="login()">시작하기</button>
+  <div id="loginView" class="student-login-shell" style="display:none;">
+    <div class="student-login-brand">
+      <span class="student-login-icon" aria-hidden="true">⭐</span>
+      <h1>오늘의 루틴</h1>
+      <p id="studentLoginClassName" class="helper-text">선생님이 알려준 내 코드를 입력해요.</p>
+    </div>
+    <div class="card student-login-card">
+      <h2>내 코드를 입력하세요</h2>
+      <label for="loginCode" style="display:block; margin-bottom:6px; font-weight:800;">학생 코드 4자리</label>
+      <input id="loginCode" class="student-code-input" placeholder="0000" maxlength="4" inputmode="numeric" autocomplete="one-time-code" enterkeyhint="go" onkeydown="if(event.key==='Enter') login()" />
+      <p class="helper-text" style="text-align:center;">루틴과 나의 휘장 성장만 확인할 수 있어요.</p>
+      <button style="width:100%; margin-top:14px;" onclick="login()">내 루틴 시작하기</button>
+    </div>
   </div>
 
   <div id="mainView" style="display:none;">
     <div class="topbar">
       <h1 id="greeting">안녕!</h1>
-      <div class="links">
-        <a href="index.html">나의 루틴</a>
-        <a href="class-board.html">우리 반 보드</a>
-        <a href="kiosk.html">보상 키오스크</a>
-        <a href="../teacher/board.html">전자칠판</a>
-        <a href="me.html">나의 통계</a>
-        <a href="#" onclick="logout(); location.href='../index.html';">처음으로</a>
-        <a href="#" onclick="logout()">로그아웃</a>
-      </div>
+      <button class="secondary student-finish-button" onclick="returnToBoard()">확인 끝! 전자칠판으로</button>
     </div>
     <div id="pointsBar" style="margin-bottom:10px; font-size:14px; color:var(--color-graphite); font-weight:700;"></div>
     <div id="syncStatus" class="sync-status"></div>
@@ -49,6 +50,7 @@
 <div class="toast" id="toast"></div>
 
 <script src="../shared/api.js"></script>
+<script src="../shared/tiers.js"></script>
 <script>
 let studentId = sessionStorage.getItem('studentId');
 let classId = sessionStorage.getItem('studentClassId');
@@ -65,6 +67,17 @@ function eventId() { return crypto.randomUUID ? crypto.randomUUID() : `${Date.no
 function showLogin() {
   document.getElementById('loginView').style.display = 'block';
   document.getElementById('mainView').style.display = 'none';
+  loadLoginClassName();
+}
+async function loadLoginClassName() {
+  const label = document.getElementById('studentLoginClassName');
+  if (!classId) { label.textContent = '선생님이 알려준 내 코드를 입력해요.'; return; }
+  try {
+    const cls = await API.get(`/api/classes/${classId}`);
+    label.textContent = `${cls.name} · 선생님이 알려준 내 코드를 입력해요.`;
+  } catch (_) {
+    label.textContent = '선생님이 알려준 내 코드를 입력해요.';
+  }
 }
 function showMain() {
   document.getElementById('loginView').style.display = 'none';
@@ -125,8 +138,16 @@ async function login() {
 
 function logout() {
   flushQueue(true);
-  sessionStorage.clear();
+  sessionStorage.removeItem('studentId');
+  sessionStorage.removeItem('studentNickname');
   showLogin();
+}
+
+function returnToBoard() {
+  flushQueue(true);
+  sessionStorage.removeItem('studentId');
+  sessionStorage.removeItem('studentNickname');
+  location.href = '../teacher/board.html';
 }
 
 function showToast(msg) {
@@ -168,7 +189,7 @@ function renderRoutines(routines) {
 function renderGrowth(animate = false) {
   const growth = state?.growth;
   const box = document.getElementById('starGaugeCard');
-  if (!growth) { box.innerHTML = '<strong>나의 성장</strong><p>성장 정보를 준비하고 있어요.</p>'; return; }
+  if (!growth) { box.innerHTML = '<strong>나의 휘장</strong><p>휘장 정보를 준비하고 있어요.</p>'; return; }
   let level = Number(growth.level || 1);
   let progress = Number(growth.progress_xp || 0);
   const target = Math.max(1, Number(growth.target_xp || 25));
@@ -178,14 +199,19 @@ function renderGrowth(animate = false) {
     while (progress >= target) { progress -= target; level += 1; }
   }
   const pct = Math.max(0, Math.min(100, Math.round(progress / target * 100)));
+  const tier = GrowthTiers.get(level);
   const message = growth.is_absent ? '오늘은 성장 게이지가 쉬어가요.'
     : growth.decay_warning ? '꾸준함 게이지가 잠들기 직전이에요. 오늘 루틴으로 깨워주세요!'
-    : state.finalized ? '오늘의 성장이 확정되었어요.'
-    : level > Number(growth.level) ? '자동 마감 후 레벨업과 보상권이 확정돼요!'
+    : state.finalized ? '오늘의 휘장 성장이 확정되었어요.'
+    : level > Number(growth.level) ? '자동 마감 후 새 휘장과 보상권이 확정돼요!'
     : '완료한 별은 자동 마감 시간에 확정돼요.';
-  box.innerHTML = `<div class="growth-level"><strong>Lv. ${level} 나의 성장</strong><span class="growth-percent">${pct}%</span></div>
+  box.innerHTML = `<div class="growth-tier-heading">
+      ${GrowthTiers.badge(level, 'tier-badge-lg')}
+      <div class="growth-tier-copy"><span class="growth-tier-name">${tier.displayName}</span><span class="growth-tier-chapter">${tier.chapter}</span></div>
+      <span class="growth-percent">${pct}%</span>
+    </div>
     <div class="star-gauge-track" style="margin:10px 0 5px;"><div class="star-gauge-fill" style="width:${pct}%;${animate?'transition:width .45s ease;':''}"></div></div>
-    <div style="font-size:13px;color:var(--color-graphite);">${message} · 보상권 🎟️ ${growth.tickets}장</div>`;
+    <div style="font-size:13px;color:var(--color-graphite);">다음: ${tier.nextName} · ${message} · 보상권 🎟️ ${growth.tickets}장</div>`;
 }
 
 function flyStar(el) {

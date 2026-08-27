@@ -34,7 +34,9 @@ async function main() {
   try {
     const today = kstDate();
     const cls = await request('POST', '/api/classes', { name: `보상 테스트 ${Date.now()}`, teacher_pin: '1234' });
-    await request('PUT', `/api/classes/${cls.id}`, { auto_close_time: '23:45', xp_target: 5, xp_decay_enabled: false });
+    await request('PUT', `/api/classes/${cls.id}`, { xp_target: 5, xp_decay_enabled: false });
+    // 테스트 실행 시각과 관계없이 수동 마감 시나리오를 검증하기 위한 내부 테스트 값이다.
+    await db.prepare(`UPDATE classes SET auto_close_time='23:45' WHERE id=?`).run(cls.id);
     const student = await request('POST', '/api/students', { class_id: cls.id, nickname: '별이', number: 1 });
     const routines = [];
     for (let index = 1; index <= 5; index++) routines.push(await request('POST', '/api/routines', { class_id: cls.id, title: `테스트 루틴 ${index}`, task_date: today }));
@@ -77,7 +79,9 @@ async function main() {
     assert.equal(progress.tickets, 1);
 
     const autoCls = await request('POST', '/api/classes', { name: `자동 마감 ${Date.now()}`, teacher_pin: '1234' });
-    await request('PUT', `/api/classes/${autoCls.id}`, { auto_close_time: '00:00', xp_target: 5, xp_decay_enabled: false });
+    await request('PUT', `/api/classes/${autoCls.id}`, { xp_target: 5, xp_decay_enabled: false });
+    // 이미 마감 시각이 지난 상황을 시간대에 상관없이 재현한다.
+    await db.prepare(`UPDATE classes SET auto_close_time='00:00' WHERE id=?`).run(autoCls.id);
     const autoStudent = await request('POST', '/api/students', { class_id: autoCls.id, nickname: '마감이', number: 1 });
     const autoRoutine = await request('POST', '/api/routines', { class_id: autoCls.id, title: '자동 마감 루틴', task_date: today });
     await request('POST', '/api/checks/sync', { events: [{ event_id: 'auto-1', routine_id: autoRoutine.id, student_id: autoStudent.id, count: 1, completed: true }] });
@@ -86,7 +90,8 @@ async function main() {
     await request('POST', '/api/checks/sync', { events: [{ event_id: 'auto-2', routine_id: autoRoutine.id, student_id: autoStudent.id, count: 0, completed: false }] }, 409);
 
     const decayCls = await request('POST', '/api/classes', { name: `차감 테스트 ${Date.now()}`, teacher_pin: '1234' });
-    await request('PUT', `/api/classes/${decayCls.id}`, { auto_close_time: '23:45', xp_target: 5, xp_decay_enabled: true, xp_decay_misses: 2, xp_decay_amount: 1 });
+    await request('PUT', `/api/classes/${decayCls.id}`, { xp_target: 5, xp_decay_enabled: true, xp_decay_misses: 2, xp_decay_amount: 1 });
+    await db.prepare(`UPDATE classes SET auto_close_time='23:45' WHERE id=?`).run(decayCls.id);
     const activeStudent = await request('POST', '/api/students', { class_id: decayCls.id, nickname: '활동이', number: 1 });
     const missedStudent = await request('POST', '/api/students', { class_id: decayCls.id, nickname: '꾸준이', number: 2 });
     const decayRoutine = await request('POST', '/api/routines', { class_id: decayCls.id, title: '매일 정리하기', days_of_week: '0,1,2,3,4,5,6' });

@@ -75,7 +75,7 @@ router.put('/:id', async (req, res) => {
     return res.status(400).json({ error: '자동 마감 시간은 오후 2시~8시 45분 사이에서 15분 단위로 지정해주세요' });
   }
   if (xp_target !== undefined && (!Number.isInteger(xp_target) || xp_target < 5 || xp_target > 200)) {
-    return res.status(400).json({ error: '레벨 목표는 5~200 사이의 정수여야 해요' });
+    return res.status(400).json({ error: '휘장 한 단계의 목표는 5~200 사이의 정수여야 해요' });
   }
   if (xp_decay_misses !== undefined && (!Number.isInteger(xp_decay_misses) || xp_decay_misses < 2 || xp_decay_misses > 20)) {
     return res.status(400).json({ error: '경험치 차감 기준은 2~20회 사이여야 해요' });

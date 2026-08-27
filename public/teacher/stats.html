@@ -5,36 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>통계</title>
 <link rel="stylesheet" href="../shared/common.css" />
+<style>
+  .weekly-chart { display:flex; align-items:stretch; gap:12px; height:190px; padding-top:8px; }
+  .weekly-chart-column { flex:1; min-width:52px; display:flex; flex-direction:column; text-align:center; }
+  .weekly-chart-value { color:var(--color-charcoal); font-size:14px; font-weight:900; }
+  .weekly-chart-bar-space { position:relative; flex:1; display:flex; align-items:flex-end; margin:5px 0 7px; border-bottom:2px solid var(--color-cloud-gray); }
+  .weekly-chart-bar-space::after { content:""; position:absolute; left:0; right:0; bottom:calc(var(--goal, 80) * 1%); border-top:2px dashed #e99a00; opacity:.75; }
+  .weekly-chart-bar { width:100%; min-height:4px; border-radius:7px 7px 2px 2px; background:linear-gradient(180deg,#76db25,#58cc02); }
+  .weekly-chart-date { color:var(--color-graphite); font-size:14px; font-weight:700; }
+  .percent-input { display:flex; align-items:center; gap:7px; }
+  .percent-input input { width:110px; }
+  .percent-input span { font-weight:800; color:var(--color-graphite); }
+  @media(max-width:600px){ .weekly-chart { gap:6px; overflow-x:auto; } .weekly-chart-column { flex:0 0 72px; } }
+</style>
 </head>
 <body>
 <div class="container">
-  <a href="index.html">&larr; 대시보드로</a>
-  <h1>주간 통계</h1>
+  <div class="teacher-page-header">
+    <h1>주간 통계</h1>
+    <nav class="teacher-nav" aria-label="교사 화면 이동">
+      <a href="index.html">대시보드</a>
+      <a href="board.html">전자칠판</a>
+      <a href="routines.html">루틴 관리</a>
+      <a href="rewards.html">보상 관리</a>
+      <a class="active" href="stats.html" aria-current="page">통계</a>
+    </nav>
+  </div>
 
-  <div class="card">
+  <div class="card summary-card">
     <h2>최근 7일 학급 완료율</h2>
-    <div id="weeklyChart" style="display:flex; align-items:flex-end; gap:8px; height:160px;"></div>
+    <p class="helper-text">막대 위 숫자로 날짜별 완료율을 확인할 수 있습니다.</p>
+    <div id="weeklyGoalLabel" style="margin-top:6px; color:#a66700; font-size:14px; font-weight:900;">목표 80% · 주황색 점선</div>
+    <div id="weeklyChart" class="weekly-chart" aria-label="최근 7일 학급 완료율 그래프"></div>
   </div>
 
-  <div class="card">
+  <div class="card settings-card">
     <h2>목표/보상 설정</h2>
-    <input id="goalTarget" type="number" min="1" max="100" placeholder="목표 달성률(%)" />
-    <input id="rewardText" placeholder="보상 내용 (예: 칭찬 스티커판)" style="width:100%; max-width:260px;" />
-    <button onclick="saveGoal()">저장</button>
+    <div class="form-grid-responsive" style="align-items:end;">
+      <div class="form-field"><label for="goalTarget">학급 목표 달성률</label><div class="percent-input"><input id="goalTarget" type="number" min="1" max="100" /><span>%</span></div></div>
+      <div class="form-field form-field-wide"><label for="rewardText">목표 달성 보상</label><input id="rewardText" placeholder="예: 칭찬 스티커판" /></div>
+      <button onclick="saveGoal()">목표와 보상 저장</button>
+    </div>
   </div>
 
-  <div class="card">
+  <div class="card settings-card">
     <h2>칭찬/아쉬움 가중치 설정</h2>
-    <p style="font-size:13px; color:var(--color-silver); margin-top:0;">
+    <p class="helper-text" style="margin-top:0;">
       전자칠판에서 학생에게 칭찬이나 아쉬운 점을 기록하면, 그날 루틴 %에 아래 가중치만큼 더해지거나 빠져요.
       공동 성장 캠페인에는 이 설정과 별도로 칭찬 3회당 에너지 +1, 아쉬움 3회당 -1이 적용됩니다.
     </p>
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">칭찬 1번당 더해지는 % (+)</label>
-    <input id="praiseWeight" type="number" min="0" max="100" step="1" placeholder="예: 5" style="width:100px;" /> %
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">아쉬움 1번당 빠지는 % (-)</label>
-    <input id="concernWeight" type="number" min="0" max="100" step="1" placeholder="예: 5" style="width:100px;" /> %
-
+    <div class="form-grid-responsive" style="margin-top:12px;">
+      <div class="form-field"><label for="praiseWeight">칭찬 1번당 추가</label><div class="percent-input"><input id="praiseWeight" type="number" min="0" max="100" step="1" placeholder="예: 5" /><span>%</span></div></div>
+      <div class="form-field"><label for="concernWeight">아쉬움 1번당 차감</label><div class="percent-input"><input id="concernWeight" type="number" min="0" max="100" step="1" placeholder="예: 5" /><span>%</span></div></div>
+    </div>
     <div style="margin-top:14px;">
       <button onclick="saveNoteWeights()">가중치 저장</button>
     </div>
@@ -45,58 +68,34 @@
     <div id="noteList" class="table-scroll"></div>
   </div>
 
-  <div class="card">
+  <div class="card settings-card">
     <h2>뽑기 설정</h2>
-    <p style="font-size:13px; color:var(--color-silver); margin-top:0;">
+    <p class="helper-text" style="margin-top:0;">
       하루를 마감하면 학생들이 "오늘 루틴을 한 만큼"에 따라 숫자 뽑기를 해요.
       평소엔 보통 숫자가 나오고, 루틴을 많이 한 날엔 특별한 숫자가 나올 수 있어요.
     </p>
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">
-      나쁜 숫자 (쉼표로 구분, 예: -1,-2) <span style="color:var(--color-silver);">— 비워두면 비활성</span>
-    </label>
-    <input id="badNumbers" placeholder="예: -1,-2 (비워두면 사용 안 함)" style="width:100%; max-width:260px;" />
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">
-      루틴 달성률이 몇 % 미만이면 나쁜 숫자가 나오는지
-    </label>
-    <input id="badThreshold" type="number" min="0" max="100" placeholder="예: 30" style="width:100px;" /> %
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:16px;">보통 숫자 (쉼표로 구분, 작은 숫자부터)</label>
-    <input id="lowNumbers" placeholder="예: 1,2" style="width:100%; max-width:260px;" />
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">특별한 숫자 (쉼표로 구분, 작은 숫자부터)</label>
-    <input id="highNumbers" placeholder="예: 3,4,5" style="width:100%; max-width:260px;" />
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">
-      오늘 루틴을 한 만큼이 몇 % 이상이면 특별한 숫자가 나올 수 있는지
-    </label>
-    <input id="drawThreshold" type="number" min="0" max="100" placeholder="예: 70" style="width:100px;" /> %
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">
-      그 기준을 막 넘었을 때, 특별한 숫자가 나올 확률
-    </label>
-    <input id="drawMinChance" type="number" min="0" max="100" placeholder="예: 15" style="width:100px;" /> %
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">
-      루틴을 100% 다 했을 때, 특별한 숫자가 나올 확률
-    </label>
-    <input id="drawMaxChance" type="number" min="0" max="100" placeholder="예: 60" style="width:100px;" /> %
+    <div class="form-grid-responsive" style="margin-top:12px;">
+      <div class="form-field"><label for="badNumbers">나쁜 숫자</label><input id="badNumbers" placeholder="예: -1,-2" /><p class="helper-text">비워두면 사용하지 않아요.</p></div>
+      <div class="form-field"><label for="badThreshold">나쁜 숫자 적용 기준</label><div class="percent-input"><input id="badThreshold" type="number" min="0" max="100" placeholder="예: 30" /><span>% 미만</span></div></div>
+      <div class="form-field"><label for="lowNumbers">보통 숫자</label><input id="lowNumbers" placeholder="예: 1,2" /></div>
+      <div class="form-field"><label for="highNumbers">특별한 숫자</label><input id="highNumbers" placeholder="예: 3,4,5" /></div>
+      <div class="form-field"><label for="drawThreshold">특별 숫자 시작 기준</label><div class="percent-input"><input id="drawThreshold" type="number" min="0" max="100" placeholder="예: 70" /><span>% 이상</span></div></div>
+      <div class="form-field"><label for="drawMinChance">기준을 막 넘겼을 때 확률</label><div class="percent-input"><input id="drawMinChance" type="number" min="0" max="100" placeholder="예: 15" /><span>%</span></div></div>
+      <div class="form-field"><label for="drawMaxChance">루틴 100%일 때 확률</label><div class="percent-input"><input id="drawMaxChance" type="number" min="0" max="100" placeholder="예: 60" /><span>%</span></div></div>
+    </div>
 
     <div style="margin-top:14px;">
       <button onclick="saveDrawConfig()">뽑기 설정 저장</button>
     </div>
   </div>
 
-  <div class="card">
+  <div class="card settings-card">
     <h2>비밀번호 변경</h2>
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">현재 비밀번호</label>
-    <input id="currentPin" type="password" placeholder="현재 비밀번호" style="width:100%; max-width:260px;" />
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">새 비밀번호</label>
-    <input id="newPin" type="password" placeholder="새 비밀번호" style="width:100%; max-width:260px;" />
-
-    <label style="display:block; font-size:13px; color:var(--color-graphite); margin-top:10px;">새 비밀번호 확인</label>
-    <input id="newPinConfirm" type="password" placeholder="새 비밀번호 확인" style="width:100%; max-width:260px;" />
+    <div class="form-grid-responsive">
+      <div class="form-field"><label for="currentPin">현재 비밀번호</label><input id="currentPin" type="password" autocomplete="current-password" /></div>
+      <div class="form-field"><label for="newPin">새 비밀번호</label><input id="newPin" type="password" autocomplete="new-password" /></div>
+      <div class="form-field"><label for="newPinConfirm">새 비밀번호 확인</label><input id="newPinConfirm" type="password" autocomplete="new-password" /></div>
+    </div>
 
     <div style="margin-top:14px;">
       <button onclick="changePin()">비밀번호 변경</button>
@@ -119,10 +118,10 @@ async function loadWeekly() {
   const chart = document.getElementById('weeklyChart');
   chart.innerHTML = rows.map(r => {
     const rate = r.total ? Math.round((r.completed / r.total) * 100) : 0;
-    return `<div style="flex:1; text-align:center;">
-      <div style="background:var(--color-duo-green); border-radius:6px 6px 0 0; height:${Math.max(rate,2)}px; transition:height .4s;"></div>
-      <div style="font-size:12px; margin-top:4px;">${r.date.slice(5)}</div>
-      <div style="font-size:12px; color:var(--color-silver);">${rate}%</div>
+    return `<div class="weekly-chart-column" aria-label="${r.date.slice(5)} 완료율 ${rate}%">
+      <div class="weekly-chart-value">${rate}%</div>
+      <div class="weekly-chart-bar-space"><div class="weekly-chart-bar" style="height:${Math.max(rate,3)}%;"></div></div>
+      <div class="weekly-chart-date">${r.date.slice(5)}</div>
     </div>`;
   }).join('');
 }
@@ -131,6 +130,8 @@ async function loadGoal() {
   const cls = await API.get(`/api/classes/${classId}`);
   document.getElementById('goalTarget').value = cls.goal_gauge_target;
   document.getElementById('rewardText').value = cls.reward_text || '';
+  document.getElementById('weeklyChart').style.setProperty('--goal', Number(cls.goal_gauge_target || 80));
+  document.getElementById('weeklyGoalLabel').textContent = `목표 ${Number(cls.goal_gauge_target || 80)}% · 주황색 점선`;
 
   const draw = cls.draw_config;
   document.getElementById('badNumbers').value = (draw.badNumbers || []).join(',');
@@ -170,7 +171,7 @@ async function loadNotes() {
 function renderNoteList() {
   const el = document.getElementById('noteList');
   if (!notesCache.length) {
-    el.innerHTML = '<p style="color:var(--color-silver); font-size:13px;">아직 기록이 없어요</p>';
+    el.innerHTML = '<p class="helper-text">아직 기록이 없어요.</p>';
     return;
   }
   el.innerHTML = notesCache.map(n => {
@@ -196,7 +197,7 @@ function renderNoteList() {
       </div>
       <div style="display:flex; gap:6px; flex:none;">
         <button class="secondary" style="font-size:12px; padding:6px 10px;" onclick="startEditNote(${n.id})">수정</button>
-        <button class="secondary" style="font-size:12px; padding:6px 10px;" onclick="deleteNote(${n.id})">삭제</button>
+        <button class="danger" style="font-size:12px; padding:6px 10px;" onclick="deleteNote(${n.id})">삭제</button>
       </div>
     </div>`;
   }).join('');

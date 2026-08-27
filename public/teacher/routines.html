@@ -8,31 +8,40 @@
 </head>
 <body>
 <div class="container">
-  <a href="index.html">&larr; 대시보드로</a>
-  <h1>루틴 관리</h1>
+  <div class="teacher-page-header">
+    <h1>루틴 관리</h1>
+    <nav class="teacher-nav" aria-label="교사 화면 이동">
+      <a href="index.html">대시보드</a>
+      <a href="board.html">전자칠판</a>
+      <a class="active" href="routines.html" aria-current="page">루틴 관리</a>
+      <a href="rewards.html">보상 관리</a>
+      <a href="stats.html">통계</a>
+    </nav>
+  </div>
 
-  <div class="card">
+  <div class="card settings-card">
     <div style="display:flex; gap:8px; margin-bottom:14px;">
       <button id="modeRoutineBtn" onclick="setMode('routine')" style="flex:1;">📅 반복 루틴</button>
       <button id="modeTaskBtn" onclick="setMode('task')" class="secondary" style="flex:1;">✏️ 오늘의 할일</button>
     </div>
     <h2 id="formTitle">새 루틴 만들기</h2>
-    <div style="display:flex; flex-wrap:wrap; gap:8px;">
-      <input id="rTitle" placeholder="루틴 이름 (예: 책 읽기)" />
-      <input id="rIcon" placeholder="아이콘 (예: 📖)" style="width:80px" />
-      <select id="rTimeSlot">
-        <option value="아침">아침</option>
-        <option value="오전">오전</option>
-        <option value="오후" selected>오후</option>
-        <option value="하루">하루 종일</option>
-      </select>
-      <input id="rTarget" type="number" min="1" value="1" placeholder="목표 횟수" style="width:90px" />
-      <input id="rStart" type="time" title="이 시간 이전에는 체크할 수 없어요" style="width:140px" />
-      <input id="rDeadline" type="time" title="이 시간 이후에는 체크할 수 없어요" style="width:140px" />
-      <select id="rStudent"><option value="">공통 (전체 학생)</option></select>
+    <p class="helper-text" style="margin-bottom:12px;">기본 정보와 체크 가능한 시간을 순서대로 정해주세요.</p>
+    <div class="form-grid-responsive">
+      <div class="form-field form-field-wide"><label for="rTitle">루틴 이름</label><input id="rTitle" placeholder="예: 책 읽기" /></div>
+      <div class="form-field"><label for="rIcon">아이콘</label><input id="rIcon" placeholder="예: 📖" /></div>
+      <div class="form-field"><label for="rTimeSlot">시간대</label><select id="rTimeSlot">
+          <option value="아침">아침</option>
+          <option value="오전">오전</option>
+          <option value="오후" selected>오후</option>
+          <option value="하루">하루 종일</option>
+        </select></div>
+      <div class="form-field"><label for="rTarget">완료 목표 횟수</label><input id="rTarget" type="number" min="1" value="1" /></div>
+      <div class="form-field"><label for="rStudent">대상 학생</label><select id="rStudent"><option value="">공통 (전체 학생)</option></select></div>
+      <div class="form-field"><label for="rStart">체크 시작 시간</label><input id="rStart" type="time" title="이 시간 이전에는 체크할 수 없어요" /></div>
+      <div class="form-field"><label for="rDeadline">체크 마감 시간</label><input id="rDeadline" type="time" title="이 시간 이후에는 체크할 수 없어요" /></div>
     </div>
-    <div id="dowRow" style="margin-top:8px;">
-      요일:
+    <div id="dowRow" style="margin-top:14px;">
+      <strong style="display:block; margin-bottom:6px;">반복 요일</strong>
       <label><input type="checkbox" class="dow" value="1" checked>월</label>
       <label><input type="checkbox" class="dow" value="2" checked>화</label>
       <label><input type="checkbox" class="dow" value="3" checked>수</label>
@@ -41,9 +50,9 @@
       <label><input type="checkbox" class="dow" value="6" checked>토</label>
       <label><input type="checkbox" class="dow" value="0" checked>일</label>
     </div>
-    <div id="taskDateRow" style="margin-top:8px; display:none;">
-      📅 날짜: <input id="rTaskDate" type="date" style="width:160px;" />
-      <span style="font-size:13px; color:var(--color-silver); margin-left:6px;">해당 날 하루만 학생에게 표시돼요</span>
+    <div id="taskDateRow" class="form-field" style="margin-top:14px; display:none; max-width:360px;">
+      <label for="rTaskDate">할 일 날짜</label><input id="rTaskDate" type="date" />
+      <p class="helper-text">해당 날 하루만 학생에게 표시돼요.</p>
     </div>
     <div style="margin-top:10px;">
       <label style="display:block; font-size:13px; color:var(--color-graphite); margin-bottom:4px;">제외할 학생 (체크한 학생에게는 이 루틴이 보이지 않아요)</label>
@@ -57,7 +66,8 @@
 
   <div class="card">
     <h2>루틴 목록</h2>
-    <div class="table-scroll"><table id="routineTable" class="student-table"></table></div>
+    <p class="helper-text">작은 화면에서는 루틴마다 카드 형태로 바뀌어 표시됩니다.</p>
+    <div class="table-scroll"><table id="routineTable" class="student-table responsive-table"></table></div>
   </div>
 </div>
 
@@ -205,19 +215,19 @@ async function loadRoutines() {
   const table = document.getElementById('routineTable');
   table.innerHTML = '<tr><th>아이콘</th><th>이름</th><th>종류</th><th>시간대</th><th>요일/날짜</th><th>목표</th><th>시작</th><th>마감</th><th>대상</th><th>제외</th><th></th></tr>' +
     routines.map(r => `<tr>
-      <td>${r.icon}</td>
-      <td>${r.title}</td>
-      <td>${r.task_date ? '<span style="background:#e8f4ff; color:#2980b9; font-size:12px; font-weight:700; padding:2px 8px; border-radius:8px;">할일</span>' : '루틴'}</td>
-      <td>${r.time_slot}</td>
-      <td>${r.task_date ? r.task_date : (r.days_of_week || '').split(',').map(d => DOW_LABEL[d]).join(' ')}</td>
-      <td>${r.target_count}</td>
-      <td>${r.start_time || '-'}</td>
-      <td>${r.deadline_time || '-'}</td>
-      <td>${r.student_id ? '개인' : '전체'}</td>
-      <td>${(r.excluded_student_ids || []).length ? `${r.excluded_student_ids.length}명` : '-'}</td>
-      <td>
+      <td data-label="아이콘">${r.icon}</td>
+      <td data-label="이름">${r.title}</td>
+      <td data-label="종류">${r.task_date ? '<span style="background:#e8f4ff; color:#2980b9; font-size:12px; font-weight:700; padding:2px 8px; border-radius:8px;">할일</span>' : '루틴'}</td>
+      <td data-label="시간대">${r.time_slot}</td>
+      <td data-label="요일/날짜">${r.task_date ? r.task_date : (r.days_of_week || '').split(',').map(d => DOW_LABEL[d]).join(' ')}</td>
+      <td data-label="목표">${r.target_count}</td>
+      <td data-label="시작">${r.start_time || '-'}</td>
+      <td data-label="마감">${r.deadline_time || '-'}</td>
+      <td data-label="대상">${r.student_id ? '개인' : '전체'}</td>
+      <td data-label="제외">${(r.excluded_student_ids || []).length ? `${r.excluded_student_ids.length}명` : '-'}</td>
+      <td data-label="관리">
         <button class="secondary" onclick="editRoutine(${r.id})">수정</button>
-        <button class="secondary" onclick="removeRoutine(${r.id})">삭제</button>
+        <button class="danger" onclick="removeRoutine(${r.id})">삭제</button>
       </td>
     </tr>`).join('');
 }
