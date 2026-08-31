@@ -36,7 +36,7 @@ function groupRoutinesByStudent(routines, students, dow, exclusionMap, date) {
 }
 
 async function loadClassContext(classId, date, dow) {
-  const [students, routines, checks, tiers, absences, notes, cls, exclusions] = await Promise.all([
+  const [students, routines, checks, tiers, absences, notes, cls, exclusions, growthRows, closure] = await Promise.all([
     // routine_exempt(루틴을 할 수 없는 학생) 학생은 전자칠판/통계에 전혀 노출되지 않도록 조회 단계에서 제외
     db.prepare(`SELECT id, nickname, number, points, avatar_json FROM students WHERE class_id = ? AND routine_exempt = 0 ORDER BY number ASC`).all(classId),
     db.prepare(`SELECT * FROM routines WHERE class_id = ? AND active = 1`).all(classId),
@@ -54,12 +54,14 @@ async function loadClassContext(classId, date, dow) {
        WHERE s.class_id = ? AND sa.date = ?`
     ).all(classId, date),
     db.prepare(`SELECT type FROM class_notes WHERE class_id = ? AND date = ?`).all(classId, date),
-    db.prepare(`SELECT praise_weight, concern_weight FROM classes WHERE id = ?`).get(classId),
+    db.prepare(`SELECT praise_weight, concern_weight, xp_target FROM classes WHERE id = ?`).get(classId),
     db.prepare(
       `SELECT re.routine_id, re.student_id FROM routine_exclusions re
        JOIN routines r ON r.id = re.routine_id
        WHERE r.class_id = ?`
-    ).all(classId)
+    ).all(classId),
+    db.prepare(`SELECT student_id, level, progress_xp, target_xp FROM student_growth WHERE class_id = ?`).all(classId),
+    db.prepare(`SELECT date FROM daily_growth_closures WHERE class_id = ? AND date = ?`).get(classId, date)
   ]);
 
   const exclusionMap = new Map();
@@ -83,7 +85,19 @@ async function loadClassContext(classId, date, dow) {
     concern: cls && cls.concern_weight != null ? cls.concern_weight : 0.05
   };
 
-  return { students, routinesByStudent, checksByStudent, tiers, absentSet, noteCounts, weights };
+  const growthMap = new Map(growthRows.map(row => [Number(row.student_id), row]));
+  return {
+    students,
+    routinesByStudent,
+    checksByStudent,
+    tiers,
+    absentSet,
+    noteCounts,
+    weights,
+    growthMap,
+    growthClosed: !!closure,
+    growthTarget: Math.max(1, Number(cls?.xp_target || 25))
+  };
 }
 
 // 원래 완료율에 그날 학급 전체의 칭찬(+)/아쉬움(-) 횟수 * 가중치를 더해 0~1 사이로 보정
@@ -156,7 +170,7 @@ router.get('/dashboard', async (req, res) => {
   const date = req.query.date || todayStr();
   const dow = dowOf(date);
 
-  const [{ students, routinesByStudent, checksByStudent, tiers, absentSet, noteCounts, weights }, cls, campaign] = await Promise.all([
+  const [{ students, routinesByStudent, checksByStudent, tiers, absentSet, noteCounts, weights, growthMap, growthClosed, growthTarget }, cls, campaign] = await Promise.all([
     loadClassContext(classId, date, dow),
     db.prepare(`SELECT goal_gauge_target, reward_text FROM classes WHERE id = ?`).get(classId),
     activeCampaign(classId)
@@ -192,6 +206,18 @@ router.get('/dashboard', async (req, res) => {
       totalCompleted += completedCount;
     }
 
+    const growth = growthMap.get(Number(s.id));
+    let growthLevel = Math.max(1, Number(growth?.level || 1));
+    let growthProgress = Math.max(0, Number(growth?.progress_xp || 0));
+    const growthXpTarget = Math.max(1, Number(growth?.target_xp || growthTarget));
+    if (!growthClosed && !isAbsent) {
+      growthProgress += completedCount;
+      while (growthProgress >= growthXpTarget) {
+        growthProgress -= growthXpTarget;
+        growthLevel += 1;
+      }
+    }
+
     return {
       student_id: s.id,
       nickname: s.nickname,
@@ -201,6 +227,8 @@ router.get('/dashboard', async (req, res) => {
       rate,
       completed_count: completedCount,
       total_count: routines.length,
+      growth_level: growthLevel,
+      growth_percent: Math.round(growthProgress / growthXpTarget * 100),
       is_absent: isAbsent,
       message: isAbsent ? '오늘은 결석이에요' : pickMessageFrom(tiers, classId, rate),
       routines: routineDetail
@@ -214,6 +242,8 @@ router.get('/dashboard', async (req, res) => {
   res.json({
     date,
     class_rate: classRate,
+    class_completed_count: totalCompleted,
+    class_total_count: totalRoutines,
     class_note_counts: noteCounts,
     class_note_energy: {
       praise: Math.floor(noteCounts.praise / 3),

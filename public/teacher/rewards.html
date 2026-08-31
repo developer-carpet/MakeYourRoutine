@@ -44,7 +44,8 @@
   .milestone-row { display:grid; grid-template-columns:110px minmax(220px,1fr) auto; gap:8px; align-items:end; margin-top:8px; }
   .milestone-row button { min-width:72px; }
   .tier-catalog { display:grid; grid-template-columns:repeat(auto-fit,minmax(130px,1fr)); gap:8px; margin-top:12px; }
-  .tier-catalog-item { display:flex; align-items:center; gap:7px; padding:8px; border:1px solid #eee2b8; border-radius:12px; background:#fffdf7; font-size:13px; font-weight:700; }
+  .tier-catalog-item { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:7px; min-height:92px; padding:8px; border:1px solid #eee2b8; border-radius:12px; background:#fffdf7; font-size:13px; font-weight:700; text-align:center; }
+  .student-tier-summary { display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px; text-align:center; }
   @media(max-width:640px){ .milestone-row { grid-template-columns:1fr; } }
 </style>
 </head>
@@ -272,7 +273,7 @@ async function saveGrowthSettings(){
   await API.put(`/api/classes/${classId}`,{auto_close_time:time,xp_target:Number(document.getElementById('xpTarget').value),xp_decay_enabled:document.getElementById('xpDecayEnabled').checked,xp_decay_misses:Number(document.getElementById('xpDecayMisses').value),xp_decay_amount:Number(document.getElementById('xpDecayAmount').value)});
   alert('개인 성장과 자동 마감 설정을 저장했어요. 변경한 목표는 다음 휘장부터 적용됩니다.'); loadAll();
 }
-function renderStudents(gauges){ students=gauges; document.getElementById('starStudentTable').innerHTML='<tr><th>학생</th><th>오늘 루틴</th><th>성장 게이지</th><th>휘장·보상권</th><th>별 조정</th></tr>'+gauges.map(g=>{const tier=GrowthTiers.get(g.projected_level);return `<tr><td>${escapeHtml(g.nickname)}</td><td>${g.is_absent?'결석':`${g.completed_count}/${g.total_count}`}</td><td><div class="mini-gauge"><div style="width:${g.projected_percent}%"></div></div> ${g.projected_percent}% ${g.finalized?'(확정)':'(진행 중)'}</td><td><div style="display:flex;align-items:center;justify-content:center;gap:7px;">${GrowthTiers.badge(g.projected_level,'tier-badge-sm')}<span>${tier.displayName}<br>🎟️ ${g.tickets}장</span></div></td><td><button class="secondary" onclick="openGrantModal(${g.student_id})">＋ / － 조정</button></td></tr>`;}).join(''); }
+function renderStudents(gauges){ students=gauges; document.getElementById('starStudentTable').innerHTML='<tr><th>학생</th><th>오늘 루틴</th><th>성장 게이지</th><th>휘장·보상권</th><th>별 조정</th></tr>'+gauges.map(g=>{const tier=GrowthTiers.get(g.projected_level);return `<tr><td>${escapeHtml(g.nickname)}</td><td>${g.is_absent?'결석':`${g.completed_count}/${g.total_count}`}</td><td><div class="mini-gauge"><div style="width:${g.projected_percent}%"></div></div> ${g.projected_percent}% ${g.finalized?'(확정)':'(진행 중)'}</td><td><div class="student-tier-summary">${GrowthTiers.badge(g.projected_level,'tier-badge-sm')}<span>${tier.displayName}<br>🎟️ ${g.tickets}장</span></div></td><td><button class="secondary" onclick="openGrantModal(${g.student_id})">＋ / － 조정</button></td></tr>`;}).join(''); }
 
 const grantReasons = {
   add: ['꾸준히 노력했어요','친구를 도와주었어요','어려운 일에 도전했어요','수업에 집중했어요'],

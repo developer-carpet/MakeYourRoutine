@@ -489,22 +489,35 @@ input::placeholder { color: var(--color-silver); }
 .star-gauge-track { height: 18px; border-radius: 10px; overflow: hidden; background: #eee8cf; }
 .star-gauge-fill { height: 100%; background: linear-gradient(90deg, #ffb800, #ffe55b); transition: width .5s ease; }
 .tier-badge {
-  display: inline-block;
+  display: block;
   flex: 0 0 auto;
   width: 56px;
   height: 56px;
   border-radius: 50%;
-  background-image: url('../images/growth-badges.webp');
+  background-image: url('../images/growth-badges-v2.webp');
   background-repeat: no-repeat;
   background-size: 500% 300%;
   background-position: var(--tier-x, 0%) var(--tier-y, 0%);
   filter: drop-shadow(0 3px 4px rgba(82, 62, 25, .18));
+  margin: 0 auto;
+  vertical-align: middle;
 }
 .tier-badge-sm { width: 42px; height: 42px; }
 .tier-badge-lg { width: 88px; height: 88px; }
 .tier-badge-xl { width: 112px; height: 112px; }
-.growth-tier-heading { display: flex; align-items: center; gap: 12px; }
-.growth-tier-copy { flex: 1; min-width: 0; }
+.growth-tier-heading {
+  display: grid;
+  grid-template-columns: minmax(54px, 1fr) auto minmax(54px, 1fr);
+  grid-template-rows: auto auto;
+  align-items: center;
+  gap: 6px 10px;
+  width: 100%;
+  text-align: center;
+}
+.growth-tier-heading > .tier-badge { grid-column: 2; grid-row: 1; justify-self: center; }
+.growth-tier-heading > .growth-percent,
+.growth-tier-heading > strong { grid-column: 3; grid-row: 1; justify-self: end; }
+.growth-tier-copy { grid-column: 1 / -1; grid-row: 2; min-width: 0; width: 100%; text-align: center; }
 .growth-tier-name { display: block; color: #775600; font-size: 18px; font-weight: 900; }
 .growth-tier-chapter { display: block; margin-top: 2px; color: var(--color-graphite); font-size: 12px; }
 .star-balance { color: #a45a00; font-weight: 800; }
