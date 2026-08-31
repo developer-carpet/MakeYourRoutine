@@ -255,8 +255,14 @@ async function addStudent() {
 
 async function removeStudent(id) {
   if (!confirm('이 학생을 삭제할까요?')) return;
-  await API.del(`/api/students/${id}`);
-  loadStudents();
+  try {
+    await API.del(`/api/students/${id}`);
+    await Promise.all([loadStudents(), loadDashboard()]);
+    showToast('학생과 연결된 기록을 삭제했어요');
+  } catch (e) {
+    alert(`학생을 삭제하지 못했어요: ${e.message}`);
+    loadStudents();
+  }
 }
 
 async function loadDashboard() {

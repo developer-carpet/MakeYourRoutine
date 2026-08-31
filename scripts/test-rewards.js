@@ -171,6 +171,31 @@ async function main() {
     assert.equal(replay.growth.points_added, 0);
     await request('DELETE', `/api/stats/class-draw?class_id=${cls.id}`, undefined, 409);
 
+    // 루틴·성장·보상권·상점 기록이 있는 학생도 외래 키 오류 없이 완전히 삭제되어야 한다.
+    await db.batch([
+      { sql: `INSERT INTO encouragements (class_id,from_role,to_student_id,message) VALUES (?,'teacher',?,'삭제 테스트')`, params: [cls.id, student.id] },
+      { sql: `INSERT OR IGNORE INTO student_absences (student_id,date) VALUES (?,?)`, params: [student.id, addDays(today, 30)] },
+      { sql: `INSERT INTO student_star_events (class_id,student_id,date,amount,type,reason) VALUES (?,?,?,?,?,?)`, params: [cls.id, student.id, today, 1, 'delete_test', '삭제 테스트'] },
+      { sql: `INSERT OR IGNORE INTO routine_exclusions (routine_id,student_id) VALUES (?,?)`, params: [routine.id, student.id] }
+    ]);
+    await request('DELETE', `/api/students/${student.id}`);
+    await request('GET', `/api/students/${student.id}`, undefined, 404);
+    const deletedStudentRows = await db.prepare(
+      `SELECT
+        (SELECT COUNT(*) FROM routine_checks WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM streaks WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM encouragements WHERE to_student_id = ?) +
+        (SELECT COUNT(*) FROM routine_exclusions WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM student_absences WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM student_star_events WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM student_growth WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM student_xp_events WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM reward_ticket_events WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM routine_miss_state WHERE student_id = ?) +
+        (SELECT COUNT(*) FROM star_redemptions WHERE student_id = ?) AS total`
+    ).get(student.id, student.id, student.id, student.id, student.id, student.id, student.id, student.id, student.id, student.id, student.id);
+    assert.equal(Number(deletedStudentRows.total), 0, '학생 삭제 후 연결 기록이 남으면 안 됨');
+
     console.log('Reward integration tests passed');
   } finally {
     await new Promise(resolve => server.close(resolve));

@@ -1,3 +1,14 @@
+// HTML 파일을 직접 열면 /api 요청을 사용할 수 없으므로 실행 중인 로컬 앱으로 연결한다.
+if (window.location.protocol === 'file:') {
+  const normalizedPath = decodeURIComponent(window.location.pathname).replace(/\\/g, '/');
+  const publicMarker = '/public/';
+  const publicIndex = normalizedPath.lastIndexOf(publicMarker);
+  if (publicIndex >= 0) {
+    const appPath = normalizedPath.slice(publicIndex + publicMarker.length);
+    window.location.replace(`http://localhost:3000/${encodeURI(appPath)}${window.location.search}${window.location.hash}`);
+  }
+}
+
 const API = {
   async req(method, url, body) {
     const res = await fetch(url, {

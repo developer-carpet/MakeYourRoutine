@@ -83,12 +83,28 @@ router.put('/:id', async (req, res) => {
 });
 
 router.delete('/:id', async (req, res) => {
-  const id = req.params.id;
-  await db.prepare(`DELETE FROM routine_checks WHERE student_id = ?`).run(id);
-  await db.prepare(`DELETE FROM streaks WHERE student_id = ?`).run(id);
-  await db.prepare(`DELETE FROM encouragements WHERE to_student_id = ?`).run(id);
-  await db.prepare(`DELETE FROM routines WHERE student_id = ?`).run(id);
-  await db.prepare(`DELETE FROM students WHERE id = ?`).run(id);
+  const id = Number(req.params.id);
+  if (!Number.isInteger(id) || id < 1) return res.status(400).json({ error: '올바른 학생 ID가 필요해요' });
+  const student = await db.prepare(`SELECT id FROM students WHERE id = ?`).get(id);
+  if (!student) return res.status(404).json({ error: '삭제할 학생을 찾을 수 없어요' });
+
+  // 학생 삭제 전에 새 보상 체계까지 포함한 모든 연결 기록을 한 트랜잭션에서 정리한다.
+  // 개인 루틴을 참조하는 기록도 먼저 지워 외래 키 오류가 생기지 않게 한다.
+  await db.batch([
+    { sql: `DELETE FROM star_redemptions WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM reward_ticket_events WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM student_star_events WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM encouragements WHERE to_student_id = ?`, params: [id] },
+    { sql: `DELETE FROM student_absences WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM routine_exclusions WHERE student_id = ? OR routine_id IN (SELECT id FROM routines WHERE student_id = ?)`, params: [id, id] },
+    { sql: `DELETE FROM routine_checks WHERE student_id = ? OR routine_id IN (SELECT id FROM routines WHERE student_id = ?)`, params: [id, id] },
+    { sql: `DELETE FROM streaks WHERE student_id = ? OR routine_id IN (SELECT id FROM routines WHERE student_id = ?)`, params: [id, id] },
+    { sql: `DELETE FROM routine_miss_state WHERE student_id = ? OR routine_id IN (SELECT id FROM routines WHERE student_id = ?)`, params: [id, id] },
+    { sql: `DELETE FROM student_xp_events WHERE student_id = ? OR routine_id IN (SELECT id FROM routines WHERE student_id = ?)`, params: [id, id] },
+    { sql: `DELETE FROM student_growth WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM routines WHERE student_id = ?`, params: [id] },
+    { sql: `DELETE FROM students WHERE id = ?`, params: [id] }
+  ]);
   res.json({ ok: true });
 });
 
