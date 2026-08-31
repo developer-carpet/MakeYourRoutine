@@ -211,9 +211,6 @@ CREATE TABLE IF NOT EXISTS student_xp_events (
 CREATE UNIQUE INDEX IF NOT EXISTS idx_routine_xp_unique
 ON student_xp_events(student_id, date, routine_id, type) WHERE type = 'routine_complete';
 
-CREATE UNIQUE INDEX IF NOT EXISTS idx_student_xp_reversal_unique
-ON student_xp_events(reversed_event_id) WHERE reversed_event_id IS NOT NULL;
-
 CREATE TABLE IF NOT EXISTS reward_ticket_events (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   class_id INTEGER NOT NULL REFERENCES classes(id),
